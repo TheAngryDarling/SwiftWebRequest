@@ -5,7 +5,7 @@ final class WebRequestTests: XCTestCase {
     func testSingleRequest() {
         let session = URLSession(configuration: URLSessionConfiguration.default)
         let request = WebRequest.SingleRequest(URL(string: "https://www.google.ca/search?q=Swift")!, usingSession: session) { r in
-            if let s = r.responseString { print(s) }
+            if let s = r.responseString() { print(s) }
             else { print("nil") }
         }
         request.resume()
@@ -30,6 +30,17 @@ final class WebRequestTests: XCTestCase {
                 fflush(stdout)
                 sig.signal()
             }
+        }
+        request.requestStarted = { r in
+            print("Starting grouped request")
+        }
+        request.singleRequestStarted = { i, r in
+            guard let request = r as? WebRequest.SingleRequest else { return }
+            print("Staring [\(i)] \(request.originalRequest!.url!)")
+        }
+        request.singleRequestCompleted = { i, r in
+            guard let request = r as? WebRequest.SingleRequest else { return }
+            print("Finished [\(i)] \(request.originalRequest!.url!) - \((request.response as! HTTPURLResponse).statusCode) - \(request.state)")
         }
         request.resume()
         request.waitUntilComplete()
@@ -64,6 +75,7 @@ final class WebRequestTests: XCTestCase {
         sig.wait()
     }
     
+    #if os(macOS) && os(iOS) && os(tvOS) && os(watchOS)
     func testEncodingNames() {
         let encodingString: [String] = ["1",
                     "437",
@@ -897,7 +909,7 @@ final class WebRequestTests: XCTestCase {
         let se = CFStringConvertEncodingToNSStringEncoding(cfe)
         return String.Encoding(rawValue: se)
     }
-
+    #endif
 
     static var allTests = [
         ("testSingleRequest", testSingleRequest),

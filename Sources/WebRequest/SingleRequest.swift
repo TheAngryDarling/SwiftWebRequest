@@ -19,7 +19,11 @@ public extension WebRequest {
         public private(set) var results: WebRequest.Results
         private var completionHandler: ((WebRequest.Results) -> Void)? = nil
         
-        public override var state: WebRequest.State { return WebRequest.State(rawValue: self.task.state.rawValue)! }
+        public override var state: WebRequest.State {
+            //Some times completion handler gets called even though task state says its still running on linux
+            if self.results.hasResponse { return WebRequest.State.completed }
+            else { return WebRequest.State(rawValue: self.task.state.rawValue)! }
+        }
         
         // The URL request object currently being handled by the request.
         public var currentRequest: URLRequest? { return self.task.currentRequest }
@@ -44,10 +48,11 @@ public extension WebRequest {
             set { self.task.priority = newValue }
         }
         
+        #if os(macOS) && os(iOS) && os(tvOS) && os(watchOS)
         // A representation of the overall request progress
         @available (macOS 10.13, iOS 11.0, tvOS 11.0, watchOS 4.0, *)
         public override var progress: Progress { return self.task.progress }
-        
+        #endif
          // Create a new WebRequest using the provided url and session.
         public init(_ request: URLRequest, usingSession session: URLSession) {
             self.task = URLSessionDataTask()

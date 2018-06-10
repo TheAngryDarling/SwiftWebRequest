@@ -319,6 +319,9 @@ open class WebRequest: NSObject {
         public let error: Error?
         public let data: Data?
         
+        internal var hasResponse: Bool {
+            return (self.response != nil || self.error != nil || self.data != nil)
+        }
         
         // Trys to convert the resposne data to a string using the response.textEncodingName if provided.  If not it will use the defaultEncoding that is passed into the method
         public func responseString(defaultEncoding encoding: String.Encoding = .utf8) -> String? {
@@ -338,6 +341,8 @@ open class WebRequest: NSObject {
             self.data = data
         }
         
+       
+        
     }
     
     private var hasStarted: Bool = false
@@ -346,9 +351,11 @@ open class WebRequest: NSObject {
     public var state: State { fatalError("Not Impelemented") }
     
     
+    #if os(macOS) && os(iOS) && os(tvOS) && os(watchOS)
     // The progress of the request
     @available (macOS 10.13, iOS 11.0, tvOS 11.0, watchOS 4.0, *)
     public var progress: Progress { fatalError("Not Impelemented") }
+    #endif
     
     // The error of the resposne
     public var error: Swift.Error? { fatalError("Not Impelemented")  }
