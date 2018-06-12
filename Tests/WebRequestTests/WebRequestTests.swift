@@ -60,11 +60,6 @@ final class WebRequestTests: XCTestCase {
         let request =  WebRequest.GroupRequest(requests, usingSession: session, maxConcurrentRequests: 5)
         request.singleRequestCompleted = { i, r in
             guard let request = r as? WebRequest.SingleRequest else { return }
-            /*var printStr: String = " -------------------------------\(i)-----------------------------------\n"
-            if let s = request.results.responseString { printStr += s + "\n" }
-            else { printStr += "nil\n" }
-            printStr += " -------------------------------\(i)-----------------------------------\n\n\n"
-            print(printStr)*/
             print("[\(i)] \(request.originalRequest!.url!) - \((request.response as! HTTPURLResponse).statusCode)")
             let preClearData = (request.results.data != nil) ? "\(request.results.data!)" : "nil"
             print("[\(i)] \(request.originalRequest!.url!) - \(preClearData)")
@@ -80,6 +75,39 @@ final class WebRequestTests: XCTestCase {
         request.resume()
         sig.wait()
     }
+    
+    func testMultiRequestEventOnCompletedWithMaxConcurrentCount() {
+        let session = URLSession(configuration: URLSessionConfiguration.default)
+        var requests: [URL] = []
+        for i in 0..<5 {
+            var url = "https://www.google.ca/search?q=Swift"
+            if i > 0 { url += "&start=\((i * 10))" }
+            requests.append(URL(string: url)!)
+        }
+        let sig = DispatchSemaphore(value: 0)
+        let request =  WebRequest.GroupRequest(requests, usingSession: session, maxConcurrentRequests: 1)
+        request.singleRequestStarted = {i, r in
+             guard let request = r as? WebRequest.SingleRequest else { return }
+             print("[\(i)] \(request.originalRequest!.url!) - Started")
+        }
+        request.singleRequestCompleted = { i, r in
+            guard let request = r as? WebRequest.SingleRequest else { return }
+            print("[\(i)] \(request.originalRequest!.url!) - \((request.response as! HTTPURLResponse).statusCode)")
+            let preClearData = (request.results.data != nil) ? "\(request.results.data!)" : "nil"
+            print("[\(i)] \(request.originalRequest!.url!) - \(preClearData)")
+            request.emptyResultsData()
+            let postClearData = (request.results.data != nil) ? "\(request.results.data!)" : "nil"
+            print("[\(i)] \(request.originalRequest!.url!) - \(postClearData)")
+            fflush(stdout)
+        }
+        request.requestCompleted = { _ in
+            sig.signal()
+        }
+        
+        request.resume()
+        sig.wait()
+    }
+    
     
     #if os(macOS) && os(iOS) && os(tvOS) && os(watchOS)
     func testEncodingNames() {
@@ -920,6 +948,7 @@ final class WebRequestTests: XCTestCase {
     static var allTests = [
         ("testSingleRequest", testSingleRequest),
         ("testMultiRequest", testMultiRequest),
-        ("testMultiRequestEventOnCompleted", testMultiRequestEventOnCompleted)
+        ("testMultiRequestEventOnCompleted", testMultiRequestEventOnCompleted),
+        ("testMultiRequestEventOnCompletedWithMaxConcurrentCount", testMultiRequestEventOnCompletedWithMaxConcurrentCount)
     ]
 }
