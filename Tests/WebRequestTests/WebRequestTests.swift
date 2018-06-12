@@ -40,7 +40,8 @@ final class WebRequestTests: XCTestCase {
         }
         request.singleRequestCompleted = { i, r in
             guard let request = r as? WebRequest.SingleRequest else { return }
-            print("Finished [\(i)] \(request.originalRequest!.url!) - \((request.response as! HTTPURLResponse).statusCode) - \(request.state)")
+            let responseSize = request.results.data?.count ?? 0
+            print("Finished [\(i)] \(request.originalRequest!.url!) - \((request.response as! HTTPURLResponse).statusCode) - \(request.state) - Size: \(responseSize)")
         }
         request.resume()
         request.waitUntilComplete()

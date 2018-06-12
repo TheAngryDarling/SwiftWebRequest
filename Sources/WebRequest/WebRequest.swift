@@ -35,7 +35,7 @@ open class WebRequest: NSObject {
     public var error: Swift.Error? { fatalError("Not Impelemented")  }
     
     //Added eventHandlerQueue to ensure that events are triggered sequentially
-    internal let eventHandlerQueue: DispatchQueue = DispatchQueue(label: "org.webrequest.WebRequest.EventHandler.Queue")
+    private let eventHandlerQueue: DispatchQueue = DispatchQueue(label: "org.webrequest.WebRequest.EventHandler.Queue")
     
     //Event handler that gets triggered when the request first starts
     public var requestStarted: ((WebRequest) -> Void)? = nil
@@ -56,7 +56,9 @@ open class WebRequest: NSObject {
     
     internal func triggerStateChange(_ state: WebRequest.State) {
         if let handler = requestStateChanged {
-           eventHandlerQueue.async { handler(self, state) }
+            callAsyncEventHandler {
+                handler(self, state)
+            }
         }
         let event: ((WebRequest) -> Void)? = {
             switch state {
@@ -83,7 +85,9 @@ open class WebRequest: NSObject {
         
         
         if let handler = event {
-            eventHandlerQueue.async { handler(self) }
+            callAsyncEventHandler {
+                handler(self)
+            }
         }
         
         NotificationCenter.default.post(name: Notification.Name.WebRequest.StateChanged,
@@ -97,6 +101,26 @@ open class WebRequest: NSObject {
     }
     deinit {
         self.userInfo.removeAll()
+    }
+    
+    internal func callAsyncEventHandler(handler: @escaping () -> Void) {
+        eventHandlerQueue.async {
+            let currentThreadName = Thread.current.name
+            defer { Thread.current.name = currentThreadName }
+            if Thread.current.name == nil { Thread.current.name = "WebRequest.Events" }
+            
+            handler()
+        }
+    }
+    
+    internal func callSyncEventHandler(handler: @escaping () -> Void) {
+        eventHandlerQueue.sync {
+            let currentThreadName = Thread.current.name
+            defer { Thread.current.name = currentThreadName }
+            if Thread.current.name == nil { Thread.current.name = "WebRequest.Events" }
+            
+            handler()
+        }
     }
     
     // Starts/resumes the task, if it is suspended.

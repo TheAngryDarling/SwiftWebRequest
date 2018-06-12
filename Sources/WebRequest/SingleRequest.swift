@@ -339,7 +339,8 @@ public extension WebRequest {
                 guard let textEncodingName = response.textEncodingName else { return nil }
                 
                 let encoding = StringEncoding.encodingNameToStringEncoding(textEncodingName) ?? encoding
-                
+                //let rtn = String(data: data, encoding: encoding)
+                //return rtn
                 return String(data: data, encoding: encoding)
             }
             
@@ -412,7 +413,7 @@ public extension WebRequest {
                 self.triggerStateChange(.completed)
                 
                 if let handler = self.completionHandler {
-                    self.eventHandlerQueue.async { handler(self.results) }
+                    self.callAsyncEventHandler { handler(self.results) }
                 }
                 
             }
