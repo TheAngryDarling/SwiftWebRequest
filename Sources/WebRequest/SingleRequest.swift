@@ -409,7 +409,7 @@ public extension WebRequest {
                 
                 self.results = Results(request: request, response: response, error: error, data: data)
 
-                
+                // Must do this otherwise things might just hang in limbo
                 self.triggerStateChange(.completed)
                 
                 if let handler = self.completionHandler {
