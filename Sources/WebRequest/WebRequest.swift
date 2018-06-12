@@ -107,7 +107,7 @@ open class WebRequest: NSObject {
         eventHandlerQueue.async {
             let currentThreadName = Thread.current.name
             defer { Thread.current.name = currentThreadName }
-            if Thread.current.name == nil { Thread.current.name = "WebRequest.Events" }
+            if Thread.current.name == nil || Thread.current.name == "" { Thread.current.name = "WebRequest.Events" }
             
             handler()
         }
@@ -117,7 +117,7 @@ open class WebRequest: NSObject {
         eventHandlerQueue.sync {
             let currentThreadName = Thread.current.name
             defer { Thread.current.name = currentThreadName }
-            if Thread.current.name == nil { Thread.current.name = "WebRequest.Events" }
+            if Thread.current.name == nil || Thread.current.name == "" { Thread.current.name = "WebRequest.Events" }
             
             handler()
         }
