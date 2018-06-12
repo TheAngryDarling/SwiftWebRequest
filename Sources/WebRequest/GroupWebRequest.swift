@@ -32,7 +32,7 @@ public extension WebRequest {
         
         private var completionHandler: (([WebRequest]) -> Void)? = nil
         private let completionHandlerLockingQueue: DispatchQueue = DispatchQueue(label: "org.webrequest.WebRequest.CompletionHandler.Locking")
-        private var hasCompletedRequests: Bool = false
+        private var hasCalledCompletionHandler: Bool = false
         
         private var operationQueue: OperationQueue = OperationQueue()
         public var maxConcurrentRequestCount: Int {
@@ -41,7 +41,7 @@ public extension WebRequest {
         }
         // array of child web requsts
         public let requests: [WebRequest]
-        private var requestsStarted: [Bool]
+        private var requestsFinished: [Bool]
         private var suspendedRequests: [Int] = []
         
         private var hasBeenCancelled: Bool = false
@@ -98,7 +98,7 @@ public extension WebRequest {
             if let name = queueName { self.operationQueue.name = name }
             self.operationQueue.isSuspended = true
             self.requests = requests
-            self.requestsStarted = [Bool](repeating: false, count: requests.count)
+            self.requestsFinished = [Bool](repeating: false, count: requests.count)
             #if os(macOS) && os(iOS) && os(tvOS) && os(watchOS)
             var totalUnitsCount: Int64 = 0
             if #available (macOS 10.13, iOS 11.0, tvOS 11.0, watchOS 4.0, *) {
@@ -110,6 +110,9 @@ public extension WebRequest {
             
             
             for t in requests {
+                // Links child to parent.
+                t.userInfo[WebRequest.UserInfoKeys.parent] = self
+                
                 //Setup notification monitoring
                 _ = NotificationCenter.default.addObserver(forName: nil,
                                                            object: t,
@@ -253,21 +256,23 @@ public extension WebRequest {
             
             func doCompleteCheck() {
                 self.completionHandlerLockingQueue.sync {
+                    
                     //print("[\(Thread.current)] - \(self).hasCompletedRequests: \(self.hasCompletedRequests)")
-                    if !self.hasCompletedRequests &&
-                        self.requests.filter({ $0.state == .completed || $0.state == .canceling}).count == self.requests.count {
+                    if !self.hasCalledCompletionHandler &&
+                        self.requestsFinished.filter({$0}).count == self.requests.count {
+                        //self.requests.filter({ $0.state == .completed || $0.state == .canceling}).count == self.requests.count {
                         
-                        self.hasCompletedRequests = true
+                        self.hasCalledCompletionHandler = true
                         //print("[\(Thread.current)] - \(self).hasCompletedRequests: \(self.hasCompletedRequests)")
                         self.triggerStateChange(.completed)
                         
                         if let handler = self.completionHandler {
-                            DispatchQueue.global().async { handler(self.requests) }
-                            
+                            eventHandlerQueue.async { handler(self.requests) }
                         }
                     }
                 }
             }
+           
             guard let request = notification.object as? WebRequest else { return }
             guard let idx = self.requests.index(of: request) else { return }
             
@@ -284,26 +289,25 @@ public extension WebRequest {
             NotificationCenter.default.post(name: newNot, object: self, userInfo: info)
             
             if notification.name == Notification.Name.WebRequest.DidCancel {
-                if let handler = self.singleRequestCancelled { DispatchQueue.global().async { handler(idx, request) } }
+                if let handler = self.singleRequestCancelled { eventHandlerQueue.async { handler(idx, request) } }
+                self.requestsFinished[idx] = true
                 doCompleteCheck()
             } else if notification.name == Notification.Name.WebRequest.DidComplete {
-                if let handler = self.singleRequestCompleted { DispatchQueue.global().async { handler(idx, request) } }
+                if let handler = self.singleRequestCompleted { eventHandlerQueue.async { handler(idx, request) } }
+                self.requestsFinished[idx] = true
                 doCompleteCheck()
             } else if notification.name == Notification.Name.WebRequest.DidResume {
-                if let handler = self.singleRequestResumed { DispatchQueue.global().async { handler(idx, request) } }
+                if let handler = self.singleRequestResumed { eventHandlerQueue.async { handler(idx, request) } }
             } else if notification.name == Notification.Name.WebRequest.DidStart {
-                if let handler = self.singleRequestStarted { DispatchQueue.global().async { handler(idx, request) } }
+                if let handler = self.singleRequestStarted { eventHandlerQueue.async { handler(idx, request) } }
             } else if notification.name == Notification.Name.WebRequest.DidSuspend {
-                if let handler = self.singleRequestSuspended { DispatchQueue.global().async { handler(idx, request) } }
+                if let handler = self.singleRequestSuspended { eventHandlerQueue.async { handler(idx, request) } }
             } else if notification.name == Notification.Name.WebRequest.StateChanged {
                 if let state = info[Notification.Name.WebRequest.Keys.State] as? WebRequest.State {
-                    if let handler = self.singleRequestStateChanged { DispatchQueue.global().async { handler(idx, request, state) } }
+                    if let handler = self.singleRequestStateChanged { eventHandlerQueue.async { handler(idx, request, state) } }
                 }
             }
-            
-            
-            
-            
+
         }
         
         
