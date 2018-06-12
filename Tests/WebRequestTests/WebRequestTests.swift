@@ -65,6 +65,11 @@ final class WebRequestTests: XCTestCase {
             printStr += " -------------------------------\(i)-----------------------------------\n\n\n"
             print(printStr)*/
             print("[\(i)] \(request.originalRequest!.url!) - \((request.response as! HTTPURLResponse).statusCode)")
+            let preClearData = (request.results.data != nil) ? "\(request.results.data!)" : "nil"
+            print("[\(i)] \(request.originalRequest!.url!) - \(preClearData)")
+            request.emptyResultsData()
+            let postClearData = (request.results.data != nil) ? "\(request.results.data!)" : "nil"
+            print("[\(i)] \(request.originalRequest!.url!) - \(postClearData)")
             fflush(stdout)
         }
         request.requestCompleted = { _ in
