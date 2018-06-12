@@ -54,6 +54,8 @@ open class WebRequest: NSObject {
     // An object for users to store any additional information regarding the request
     public var userInfo: [String: Any] = [:]
     
+    private let requestWorkingDispatchGroup = DispatchGroup()
+    
     internal func triggerStateChange(_ state: WebRequest.State) {
         if let handler = requestStateChanged {
             callAsyncEventHandler {
@@ -63,9 +65,11 @@ open class WebRequest: NSObject {
         let event: ((WebRequest) -> Void)? = {
             switch state {
                 case .completed:
+                    requestWorkingDispatchGroup.leave()
                     NotificationCenter.default.post(name: Notification.Name.WebRequest.DidComplete, object: self)
                     return self.requestCompleted
                 case .canceling:
+                    requestWorkingDispatchGroup.leave()
                     NotificationCenter.default.post(name: Notification.Name.WebRequest.DidCancel, object: self)
                     return self.requestCancelled
                 case .suspended:
@@ -73,6 +77,7 @@ open class WebRequest: NSObject {
                     return self.requestSuspended
                 case .running:
                     if !self.hasStarted {
+                        requestWorkingDispatchGroup.enter()
                         self.hasStarted = true
                         NotificationCenter.default.post(name: Notification.Name.WebRequest.DidStart, object: self)
                         return self.requestStarted
@@ -144,9 +149,10 @@ open class WebRequest: NSObject {
     
     // Wait until request is completed.  There is no guarentee that the completion events were called before this method returns
     public func waitUntilComplete() {
-         while ((self.state == .running || self.state == .suspended) && RunLoop.current.run(mode: .defaultRunLoopMode, before: (Date() + 0.5))) {
-            //Do nothing
-        }
+         /*while ((self.state == .running || self.state == .suspended)) {
+            RunLoop.current.run(mode: .defaultRunLoopMode, before: (Date() + 0.5))
+        }*/
+        self.requestWorkingDispatchGroup.wait()
     }
 }
 
