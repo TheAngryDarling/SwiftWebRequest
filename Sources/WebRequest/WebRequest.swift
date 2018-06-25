@@ -65,12 +65,12 @@ open class WebRequest: NSObject {
         let event: ((WebRequest) -> Void)? = {
             switch state {
                 case .completed:
-                    requestWorkingDispatchGroup.leave()
                     NotificationCenter.default.post(name: Notification.Name.WebRequest.DidComplete, object: self)
+                    requestWorkingDispatchGroup.leave()
                     return self.requestCompleted
                 case .canceling:
-                    requestWorkingDispatchGroup.leave()
                     NotificationCenter.default.post(name: Notification.Name.WebRequest.DidCancel, object: self)
+                    requestWorkingDispatchGroup.leave()
                     return self.requestCancelled
                 case .suspended:
                     NotificationCenter.default.post(name: Notification.Name.WebRequest.DidSuspend, object: self)
