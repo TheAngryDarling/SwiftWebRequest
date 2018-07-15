@@ -10,7 +10,8 @@ import Foundation
 public extension WebRequest {
     
     public struct RepeatedRequestConstants {
-        public static let DEFAULT_REPEAT_INTERVAL: TimeInterval = 5 //60
+        // Default interval between repeated requests
+        public static let DEFAULT_REPEAT_INTERVAL: TimeInterval = 60
     }
     
     /*
@@ -19,8 +20,6 @@ public extension WebRequest {
      */
     @available(macOS 10.12, iOS 10.0, tvOS 10.0, watchOS 3.0, *)
     public class RepeatedRequest<T>: WebRequest {
-        
-        //public static let DEFAULT_REPEAT_INTERVAL: TimeInterval = 60
         
         public enum RepeatResults {
             case `repeat`
@@ -57,7 +56,7 @@ public extension WebRequest {
         private var hasCalledCompletionHandler: Bool = false
         
         //Repeat handler is the event handler that gets called to indicate if the class should repeat or not.  It allwos for results to be passed from here to the completion handler so they do not need to be parsed twice.
-        private var repeatHandler: ((SingleRequest.Results, Int) throws -> RepeatResults)? = nil
+        private var repeatHandler: ((RepeatedRequest<T>, SingleRequest.Results, Int) throws -> RepeatResults)? = nil
         
         
         // The URL request object currently being handled by the request.
@@ -68,8 +67,8 @@ public extension WebRequest {
         // Create a new WebRequest using the provided request and session.
         public init(_ request: @escaping @autoclosure () -> URLRequest,
                     usingSession session: @escaping @autoclosure () -> URLSession,
-                    repeatInterval: TimeInterval = { return RepeatedRequestConstants.DEFAULT_REPEAT_INTERVAL }(),
-                    repeatHandler: @escaping (SingleRequest.Results, Int) throws -> RepeatResults) {
+                    repeatInterval: TimeInterval = RepeatedRequestConstants.DEFAULT_REPEAT_INTERVAL,
+                    repeatHandler: @escaping (RepeatedRequest<T>, SingleRequest.Results, Int) throws -> RepeatResults) {
             self.repeatInterval = repeatInterval
             //var workingRequest = request
             // Ensures that we get a real data instaed of cached data
@@ -89,16 +88,16 @@ public extension WebRequest {
         // Create a new WebRequest using the provided url and session
         public convenience init(_ url: @escaping @autoclosure () -> URL,
                                 usingSession session: @escaping @autoclosure () -> URLSession,
-                                repeatInterval: TimeInterval = { return RepeatedRequestConstants.DEFAULT_REPEAT_INTERVAL }(),
-                                repeatHandler: @escaping (SingleRequest.Results, Int) throws -> RepeatResults ) {
+                                repeatInterval: TimeInterval = RepeatedRequestConstants.DEFAULT_REPEAT_INTERVAL,
+                                repeatHandler: @escaping (RepeatedRequest<T>, SingleRequest.Results, Int) throws -> RepeatResults ) {
             self.init(URLRequest(url: url()), usingSession: session, repeatInterval: repeatInterval, repeatHandler: repeatHandler)
         }
         
         // Create a new WebRequest using the provided requset and session. and call the completionHandler when finished
         public convenience init(_ request: @escaping @autoclosure () -> URLRequest,
                                 usingSession session: @escaping @autoclosure () -> URLSession,
-                                repeatInterval: TimeInterval = { return RepeatedRequestConstants.DEFAULT_REPEAT_INTERVAL }(),
-                                repeatHandler: @escaping (SingleRequest.Results, Int) throws -> RepeatResults,
+                                repeatInterval: TimeInterval = RepeatedRequestConstants.DEFAULT_REPEAT_INTERVAL,
+                                repeatHandler: @escaping (RepeatedRequest<T>, SingleRequest.Results, Int) throws -> RepeatResults,
                                 completionHandler: @escaping (SingleRequest.Results, T?, Swift.Error?) -> Void) {
             self.init(request, usingSession: session, repeatInterval: repeatInterval, repeatHandler: repeatHandler)
             self.completionHandler = completionHandler
@@ -107,8 +106,8 @@ public extension WebRequest {
         // Create a new WebRequest using the provided url and session. and call the completionHandler when finished
         public convenience init(_ url: @escaping @autoclosure () -> URL,
                                 usingSession session: @escaping @autoclosure () -> URLSession,
-                                repeatInterval: TimeInterval = { return RepeatedRequestConstants.DEFAULT_REPEAT_INTERVAL }(),
-                                repeatHandler: @escaping (SingleRequest.Results, Int) throws -> RepeatResults,
+                                repeatInterval: TimeInterval = RepeatedRequestConstants.DEFAULT_REPEAT_INTERVAL,
+                                repeatHandler: @escaping (RepeatedRequest<T>, SingleRequest.Results, Int) throws -> RepeatResults,
                                 completionHandler: @escaping (SingleRequest.Results, T?, Swift.Error?) -> Void) {
             self.init(URLRequest(url: url()), usingSession: session, repeatInterval: repeatInterval, repeatHandler: repeatHandler, completionHandler: completionHandler)
         }
@@ -133,7 +132,7 @@ public extension WebRequest {
                     do {
                         if let f = self.repeatHandler {
                             //Call repeat handler
-                            let r = try f(requestResults, self.repeatCount)
+                            let r = try f(self, requestResults, self.repeatCount)
                             shouldContinue = r.shouldRepeat
                             if !shouldContinue { results = r.finishedResults }
                             //results = r.results
