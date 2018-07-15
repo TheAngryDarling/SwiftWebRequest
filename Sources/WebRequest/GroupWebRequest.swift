@@ -253,14 +253,16 @@ public extension WebRequest {
         }
         
         private func webRequestEventMonitor(notification: Notification) -> Void {
-            
+            if self.completionHandlerLockingQueue.sync(execute: { return self.hasCalledCompletionHandler }) { return }
             func doCompleteCheck() {
                 self.completionHandlerLockingQueue.sync {
                     
                     //print("[\(Thread.current)] - \(self).hasCompletedRequests: \(self.hasCompletedRequests)")
                     if !self.hasCalledCompletionHandler &&
                         self.requestsFinished.filter({$0}).count == self.requests.count {
-                        
+                        //Stop monitoring for child request events
+                        //for r in self.requests { NotificationCenter.default.removeObserver(self, name: nil, object: r) }
+                        //NotificationCenter.default.removeObserver(self)
                         self.hasCalledCompletionHandler = true
                         self.triggerStateChange(.completed)
                         
@@ -344,7 +346,8 @@ public extension WebRequest {
             
             //Cancel all outstanding requests
             for r in self.requests {
-                if r.state == .running || r.state == .suspended { r.cancel()  }
+                //if r.state == .running || r.state == .suspended { r.cancel()  }
+                r.cancel()
             }
             
             self.hasBeenCancelled = true
