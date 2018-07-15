@@ -368,14 +368,28 @@ public extension WebRequest {
         
         public override var state: WebRequest.State {
             //Some times completion handler gets called even though task state says its still running on linux
-            if self.results.hasResponse { return WebRequest.State.completed }
+            if self.results.hasResponse {
+                #if os(macOS) || os(iOS) || os(tvOS) || os(watchOS)
+                if let e = self.results.error as NSError?, e.code == NSURLErrorCancelled {
+                    return WebRequest.State.canceling
+                } else {
+                    return WebRequest.State.completed
+                }
+                #else
+                if let e = self.results.error as? NSError, e.code == NSURLErrorCancelled {
+                    return WebRequest.State.canceling
+                } else {
+                    return WebRequest.State.completed
+                }
+                #endif
+            }
             else { return WebRequest.State(rawValue: self.task.state.rawValue)! }
         }
         
         // The URL request object currently being handled by the request.
         public var currentRequest: URLRequest? { return self.task.currentRequest }
         // The original request object passed when the request was created.
-        public var originalRequest: URLRequest? { return self.task.originalRequest }
+        public private(set) var originalRequest: URLRequest?
         // The server’s response to the currently active request.
         public var response: URLResponse? { return self.task.response }
         
@@ -402,6 +416,7 @@ public extension WebRequest {
         #endif
          // Create a new WebRequest using the provided url and session.
         public init(_ request: URLRequest, usingSession session: URLSession) {
+            self.originalRequest = request
             self.task = URLSessionDataTask()
             self.results = Results(request: request)
             super.init()
@@ -449,13 +464,33 @@ public extension WebRequest {
         
         // Cancels the request
         public override func cancel() {
+            
+            //Setup results for cancelled requests
+            if !self.results.hasResponse {
+                self.results = Results(request: self.originalRequest!, response: nil, error: SingleRequest.createCancelationError(forURL: self.originalRequest!.url!), data: nil)
+            }
+            
             super.cancel()
             self.task.cancel()
+            
         }
         
         // Allows for clearing of the reponse data.  This can be handy when working with GroupRequests with a lot of data.  That way you can process each request as it comes in and clear the data so its not sitting in memeory until all requests are finished
         public func emptyResultsData() {
             self.results.emptyData()
+        }
+        
+        
+        internal static func createCancelationError(forURL url: URL) -> Error {
+            #if os(macOS) || os(iOS) || os(tvOS) || os(watchOS)
+            var uInfo: [String: Any] = [:]
+            uInfo[NSURLErrorFailingURLStringErrorKey] = "\(url)"
+            uInfo[NSURLErrorFailingURLErrorKey] = url
+            uInfo[NSLocalizedDescriptionKey] = "cancelled"
+            return  NSError(domain: "NSURLErrorDomain", code: NSURLErrorCancelled, userInfo: uInfo)
+            #else
+            return URLError(_nsError: NSError(domain: NSURLErrorDomain, code: NSURLErrorCancelled, userInfo: nil))
+            #endif
         }
     }
 }
