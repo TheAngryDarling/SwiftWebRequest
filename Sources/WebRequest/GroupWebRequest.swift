@@ -110,6 +110,8 @@ public extension WebRequest {
             
             
             for t in requests {
+                //Propagate user info to child request
+                for (k,v) in self.userInfo { t.userInfo[k] = v }
                 // Links child to parent.
                 t.userInfo[WebRequest.UserInfoKeys.parent] = self
                 

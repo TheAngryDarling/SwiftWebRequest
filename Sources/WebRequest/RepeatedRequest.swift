@@ -170,6 +170,10 @@ public extension WebRequest {
                 
                 
             }
+            
+            //Propagate user info to repeated request
+            for (k,v) in self.userInfo { wR.userInfo[k] = v }
+            
             //Setup notification monitoring
             _ = NotificationCenter.default.addObserver(forName: nil,
                                                        object: wR,
