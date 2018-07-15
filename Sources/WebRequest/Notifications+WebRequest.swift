@@ -36,25 +36,42 @@ public extension Notification.Name {
         public static let StateChanged = Notification.Name(rawValue: "org.webrequest.notification.name.stateChanged")
         
         
-        
-        
-        /// Posted when a `URLSessionTask` is starting. The notification `object` contains the resumed `URLSessionTask`.
+        /// Posted when a child `URLSessionTask` is starting. The notification `object` contains the resumed `URLSessionTask`.
         public static let DidStartChild = Notification.Name(rawValue: "org.webrequest.notification.name.didStartChild")
         
-        /// Posted when a `URLSessionTask` is resumed. The notification `object` contains the resumed `URLSessionTask`.
+        /// Posted when a child `URLSessionTask` is resumed. The notification `object` contains the resumed `URLSessionTask`.
         public static let DidResumeChild = Notification.Name(rawValue: "org.webrequest.notification.name.didResumeChild")
         
-        /// Posted when a `URLSessionTask` is suspended. The notification `object` contains the suspended `URLSessionTask`.
+        /// Posted when a child `URLSessionTask` is suspended. The notification `object` contains the suspended `URLSessionTask`.
         public static let DidSuspendChild = Notification.Name(rawValue: "org.webrequest.notification.name.didSuspendChild")
         
-        /// Posted when a `URLSessionTask` is cancelled. The notification `object` contains the cancelled `URLSessionTask`.
+        /// Posted when a child `URLSessionTask` is cancelled. The notification `object` contains the cancelled `URLSessionTask`.
         public static let DidCancelChild = Notification.Name(rawValue: "org.webrequest.notification.name.didCancelChild")
         
-        /// Posted when a `URLSessionTask` is completed. The notification `object` contains the completed `URLSessionTask`.
+        /// Posted when a child `URLSessionTask` is completed. The notification `object` contains the completed `URLSessionTask`.
         public static let DidCompleteChild = Notification.Name(rawValue: "org.webrequest.notification.name.didCompleteChild")
         
-        /// Posted when a `URLSessionTask` is completed. The notification `object` contains the completed `URLSessionTask`.
+        /// Posted when a child `URLSessionTask` is completed. The notification `object` contains the completed `URLSessionTask`.
         public static let StateChangedChild = Notification.Name(rawValue: "org.webrequest.notification.name.stateChangedChild")
+        
+        
+        /// Posted when a repeat `URLSessionTask` is starting. The notification `object` contains the resumed `URLSessionTask`.
+        public static let DidStartRepeat = Notification.Name(rawValue: "org.webrequest.notification.name.didStartRepeat")
+        
+        /// Posted when a repeat `URLSessionTask` is resumed. The notification `object` contains the resumed `URLSessionTask`.
+        public static let DidResumeRepeat = Notification.Name(rawValue: "org.webrequest.notification.name.didResumeRepeat")
+        
+        /// Posted when a repeat `URLSessionTask` is suspended. The notification `object` contains the suspended `URLSessionTask`.
+        public static let DidSuspendRepeat = Notification.Name(rawValue: "org.webrequest.notification.name.didSuspendRepeat")
+        
+        /// Posted when a repeat `URLSessionTask` is cancelled. The notification `object` contains the cancelled `URLSessionTask`.
+        public static let DidCancelRepeat = Notification.Name(rawValue: "org.webrequest.notification.name.didCancelRepeat")
+        
+        /// Posted when a repeat `URLSessionTask` is completed. The notification `object` contains the completed `URLSessionTask`.
+        public static let DidCompleteRepeat = Notification.Name(rawValue: "org.webrequest.notification.name.didCompleteRepeat")
+        
+        /// Posted when a repeat `URLSessionTask` is completed. The notification `object` contains the completed `URLSessionTask`.
+        public static let StateChangedRepeat = Notification.Name(rawValue: "org.webrequest.notification.name.stateChangedRepeat")
     }
     
     
