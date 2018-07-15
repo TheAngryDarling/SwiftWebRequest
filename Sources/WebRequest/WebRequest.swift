@@ -55,6 +55,7 @@ open class WebRequest: NSObject {
     public var userInfo: [String: Any] = [:]
     
     private let requestWorkingDispatchGroup = DispatchGroup()
+    private var hasAlreadyLeftWorkGroup: Bool = false
     
     internal func triggerStateChange(_ state: WebRequest.State) {
         if let handler = requestStateChanged {
@@ -66,19 +67,35 @@ open class WebRequest: NSObject {
             switch state {
                 case .completed:
                     NotificationCenter.default.post(name: Notification.Name.WebRequest.DidComplete, object: self)
-                    requestWorkingDispatchGroup.leave()
+                    eventHandlerQueue.sync {
+                        if !hasAlreadyLeftWorkGroup {
+                            hasAlreadyLeftWorkGroup = true
+                            requestWorkingDispatchGroup.leave()
+                        }
+                    }
                     return self.requestCompleted
                 case .canceling:
                     NotificationCenter.default.post(name: Notification.Name.WebRequest.DidCancel, object: self)
-                    requestWorkingDispatchGroup.leave()
+                    eventHandlerQueue.sync {
+                        if !hasAlreadyLeftWorkGroup {
+                            hasAlreadyLeftWorkGroup = true
+                            requestWorkingDispatchGroup.leave()
+                        }
+                    }
                     return self.requestCancelled
                 case .suspended:
                     NotificationCenter.default.post(name: Notification.Name.WebRequest.DidSuspend, object: self)
                     return self.requestSuspended
                 case .running:
-                    if !self.hasStarted {
+                    let started: Bool = eventHandlerQueue.sync {
+                        let rtn: Bool = self.hasStarted
+                        if !rtn { self.hasStarted = true }
+                        
+                        return rtn
+                    }
+                    if !started {
+                        hasAlreadyLeftWorkGroup = false
                         requestWorkingDispatchGroup.enter()
-                        self.hasStarted = true
                         NotificationCenter.default.post(name: Notification.Name.WebRequest.DidStart, object: self)
                         return self.requestStarted
                     } else {
