@@ -3,17 +3,29 @@ import XCTest
 
 final class WebRequestTests: XCTestCase {
     func testSingleRequest() {
+        let sig = DispatchSemaphore(value: 0)
         let session = URLSession(configuration: URLSessionConfiguration.default)
         let request = WebRequest.SingleRequest(URL(string: "https://www.google.ca/search?q=Swift")!, usingSession: session) { r in
             if let s = r.responseString() { print(s) }
             else { print("nil") }
+            
+            print(r.error as Any)
+            sig.signal()
         }
         request.resume()
-        
+        //request.cancel()
         request.waitUntilComplete()
+        sig.wait()
     }
     
     func testMultiRequest() {
+        func sigHandler(_ signal: Int32) -> Void {
+            print("SIG: 4")
+            Thread.callStackSymbols.forEach{print($0)}
+            fflush(stdout)
+            exit(1)
+        }
+        signal(4, sigHandler)
         let session = URLSession(configuration: URLSessionConfiguration.default)
         var requests: [URL] = []
         for i in 0..<5 {
@@ -24,12 +36,16 @@ final class WebRequestTests: XCTestCase {
         let sig = DispatchSemaphore(value: 0)
         
         let request = WebRequest.GroupRequest(requests, usingSession: session, maxConcurrentRequests: 5) { rA in
+            print("Finished grouped request")
             for (i, r) in rA.enumerated() {
                 guard let request = r as? WebRequest.SingleRequest else { continue }
-                print("[\(i)] \(request.originalRequest!.url!) - \((request.response as! HTTPURLResponse).statusCode)")
+                var responseLine: String = "[\(i)] \(request.originalRequest!.url!): \(request.state) "
+                if let r = request.response as? HTTPURLResponse { responseLine += " - \(r.statusCode)" }
+                else if let e = request.results.error { responseLine += " - \(type(of: e)): \(e)" }
+                print(responseLine)
                 fflush(stdout)
-                sig.signal()
             }
+            sig.signal()
         }
         request.requestStarted = { r in
             print("Starting grouped request")
@@ -41,9 +57,11 @@ final class WebRequestTests: XCTestCase {
         request.singleRequestCompleted = { i, r in
             guard let request = r as? WebRequest.SingleRequest else { return }
             let responseSize = request.results.data?.count ?? 0
-            print("Finished [\(i)] \(request.originalRequest!.url!) - \((request.response as! HTTPURLResponse).statusCode) - \(request.state) - Size: \(responseSize)")
+            let responseCode = (request.response as? HTTPURLResponse)?.statusCode ?? 0
+            print("Finished [\(i)] \(request.originalRequest!.url!) - \(responseCode) - \(request.state) - Size: \(responseSize)")
         }
         request.resume()
+        //request.cancel()
         request.waitUntilComplete()
         sig.wait()
     }
@@ -106,6 +124,58 @@ final class WebRequestTests: XCTestCase {
         
         request.resume()
         sig.wait()
+    }
+    
+    func testRepeatRequest() {
+        
+        func repeatHandler(_ request: WebRequest.RepeatedRequest<Void>, _ results: WebRequest.SingleRequest.Results, _ repeatCount: Int) -> WebRequest.RepeatedRequest<Void>.RepeatResults {
+            
+            print("[\(repeatCount)] - \(results.originalURL!) - Finished")
+            if repeatCount < 5 { return WebRequest.RepeatedRequest<Void>.RepeatResults.repeat }
+            else { return WebRequest.RepeatedRequest<Void>.RepeatResults.results(nil) }
+            //return (repeat: rep, results: results)
+        }
+        let session = URLSession(configuration: URLSessionConfiguration.default)
+        let req = URL(string: "https://www.google.com")!
+        let sig = DispatchSemaphore(value: 0)
+        let r = WebRequest.RepeatedRequest<Void>(req, usingSession: session, repeatHandler: repeatHandler) { rs, r, e in
+            
+            
+            print("All Done!")
+            
+             sig.signal()
+        }
+        
+        r.resume()
+        sig.wait()
+        
+        
+    }
+    
+    
+    func testRepeatRequestCancelled() {
+        func repeatHandler(_ request: WebRequest.RepeatedRequest<Void>, _ results: WebRequest.SingleRequest.Results, _ repeatCount: Int) -> WebRequest.RepeatedRequest<Void>.RepeatResults {
+            
+            print("[\(repeatCount)] - \(results.originalURL!) - Finished")
+            if repeatCount == 3 { request.cancel() }
+            if repeatCount < 5 { return WebRequest.RepeatedRequest<Void>.RepeatResults.repeat }
+            else { return WebRequest.RepeatedRequest<Void>.RepeatResults.results(nil) }
+            //return (repeat: rep, results: results)
+        }
+        let session = URLSession(configuration: URLSessionConfiguration.default)
+        let req = URL(string: "https://www.google.com")!
+        let sig = DispatchSemaphore(value: 0)
+        let r = WebRequest.RepeatedRequest<Void>(req, usingSession: session, repeatHandler: repeatHandler) { rs, r, e in
+            
+            
+            print("All Done!")
+            
+            sig.signal()
+        }
+        r.resume()
+        sig.wait()
+        
+        
     }
     
     
@@ -949,6 +1019,8 @@ final class WebRequestTests: XCTestCase {
         ("testSingleRequest", testSingleRequest),
         ("testMultiRequest", testMultiRequest),
         ("testMultiRequestEventOnCompleted", testMultiRequestEventOnCompleted),
-        ("testMultiRequestEventOnCompletedWithMaxConcurrentCount", testMultiRequestEventOnCompletedWithMaxConcurrentCount)
+        ("testMultiRequestEventOnCompletedWithMaxConcurrentCount", testMultiRequestEventOnCompletedWithMaxConcurrentCount),
+        ("testRepeatRequest", testRepeatRequest),
+        ("testRepeatRequestCancelled", testRepeatRequestCancelled)
     ]
 }
