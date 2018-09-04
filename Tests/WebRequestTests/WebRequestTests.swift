@@ -50,11 +50,11 @@ final class WebRequestTests: XCTestCase {
         request.requestStarted = { r in
             print("Starting grouped request")
         }
-        request.singleRequestStarted = { i, r in
+        request.singleRequestStarted = {gR, i, r in
             guard let request = r as? WebRequest.SingleRequest else { return }
             print("Staring [\(i)] \(request.originalRequest!.url!)")
         }
-        request.singleRequestCompleted = { i, r in
+        request.singleRequestCompleted = {gR, i, r in
             guard let request = r as? WebRequest.SingleRequest else { return }
             let responseSize = request.results.data?.count ?? 0
             let responseCode = (request.response as? HTTPURLResponse)?.statusCode ?? 0
@@ -76,7 +76,7 @@ final class WebRequestTests: XCTestCase {
         }
         let sig = DispatchSemaphore(value: 0)
         let request =  WebRequest.GroupRequest(requests, usingSession: session, maxConcurrentRequests: 5)
-        request.singleRequestCompleted = { i, r in
+        request.singleRequestCompleted = {gR, i, r in
             guard let request = r as? WebRequest.SingleRequest else { return }
             print("[\(i)] \(request.originalRequest!.url!) - \((request.response as! HTTPURLResponse).statusCode)")
             let preClearData = (request.results.data != nil) ? "\(request.results.data!)" : "nil"
@@ -104,11 +104,11 @@ final class WebRequestTests: XCTestCase {
         }
         let sig = DispatchSemaphore(value: 0)
         let request =  WebRequest.GroupRequest(requests, usingSession: session, maxConcurrentRequests: 1)
-        request.singleRequestStarted = {i, r in
+        request.singleRequestStarted = {gR, i, r in
              guard let request = r as? WebRequest.SingleRequest else { return }
              print("[\(i)] \(request.originalRequest!.url!) - Started")
         }
-        request.singleRequestCompleted = { i, r in
+        request.singleRequestCompleted = {gR, i, r in
             guard let request = r as? WebRequest.SingleRequest else { return }
             print("[\(i)] \(request.originalRequest!.url!) - \((request.response as! HTTPURLResponse).statusCode)")
             let preClearData = (request.results.data != nil) ? "\(request.results.data!)" : "nil"
@@ -167,8 +167,8 @@ final class WebRequestTests: XCTestCase {
         let sig = DispatchSemaphore(value: 0)
         let r = WebRequest.RepeatedRequest<Void>(req, usingSession: session, repeatHandler: repeatHandler) { rs, r, e in
             
-            
             print("All Done!")
+            
             
             sig.signal()
         }
