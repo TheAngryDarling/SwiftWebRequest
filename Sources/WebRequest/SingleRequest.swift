@@ -368,22 +368,24 @@ public extension WebRequest {
         
         public override var state: WebRequest.State {
             //Some times completion handler gets called even though task state says its still running on linux
-            if self.results.hasResponse {
-                #if os(macOS) || os(iOS) || os(tvOS) || os(watchOS)
-                if let e = self.results.error as NSError?, e.code == NSURLErrorCancelled {
-                    return WebRequest.State.canceling
-                } else {
-                    return WebRequest.State.completed
-                }
-                #else
-                if let e = self.results.error as? NSError, e.code == NSURLErrorCancelled {
-                    return WebRequest.State.canceling
-                } else {
-                    return WebRequest.State.completed
-                }
-                #endif
+            guard self.results.hasResponse else {
+                return WebRequest.State(rawValue: self.task.state.rawValue)!
             }
-            else { return WebRequest.State(rawValue: self.task.state.rawValue)! }
+            
+            #if os(macOS) || os(iOS) || os(tvOS) || os(watchOS)
+            if let e = self.results.error as NSError?, e.code == NSURLErrorCancelled {
+                return WebRequest.State.canceling
+            } else {
+                return WebRequest.State.completed
+            }
+            #else
+            if let e = self.results.error as? NSError, e.code == NSURLErrorCancelled {
+                return WebRequest.State.canceling
+            } else {
+                return WebRequest.State.completed
+            }
+            #endif
+            
         }
         
         // The URL request object currently being handled by the request.
@@ -467,7 +469,10 @@ public extension WebRequest {
             
             //Setup results for cancelled requests
             if !self.results.hasResponse {
-                self.results = Results(request: self.originalRequest!, response: nil, error: SingleRequest.createCancelationError(forURL: self.originalRequest!.url!), data: nil)
+                self.results = Results(request: self.originalRequest!,
+                                       response: nil,
+                                       error: SingleRequest.createCancelationError(forURL: self.originalRequest!.url!),
+                                       data: nil)
             }
             
             super.cancel()
