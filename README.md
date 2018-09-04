@@ -72,23 +72,23 @@ request.requestStateChanged = { r, s in
 }
 
 //Setup secondary child event handlers
-request.singleRequestStarted = { i, r in 
+request.singleRequestStarted = { gR, i, r in 
 
 }
-request.singleRequestResumed = { i, r in 
+request.singleRequestResumed = { gR, i, r in 
 
 }
-request.singleRequestSuspended = { i, r in 
+request.singleRequestSuspended = { gR, i, r in 
 
 }
-request.singleRequestCancelled = { i, r in 
+request.singleRequestCancelled = { gR, i, r in 
 
 }
 //This is an additional completion handler that gets called as well as the completionHandler in the constructor
-request.singleRequestCompleted = { i, r in 
+request.singleRequestCompleted = { gR, i, r in 
 
 }
-request.singleRequestStateChanged = { i, r, s in 
+request.singleRequestStateChanged = { gR, i, r, s in 
 
 }
 
