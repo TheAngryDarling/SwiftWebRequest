@@ -189,25 +189,29 @@ public extension WebRequest {
         public override func resume() {
             guard self._state == .suspended else { return }
             
+            //Ensures we call the super so proper events get signaled
+            super.resume()
+            self._state = .running
+            
             if let r = self.webRequest { r.resume() }
             else {
                 // Must create sub request
                 self.createRequest(isFirstRequest: true)
             }
             
-            //Ensures we call the super so proper events get signaled
-            super.resume()
-            self._state = .running
+           
         }
         
         
         // Temporarily suspends a task.
         public override func suspend() {
             guard self._state == .running else { return }
-            if let r = self.webRequest { r.suspend() }
+            
             //Ensures we call the super so proper events get signaled
             super.suspend()
             self._state = .suspended
+            if let r = self.webRequest { r.suspend() }
+            
         }
         
         // Cancels the task
