@@ -137,7 +137,7 @@ request.resume() //Starts the request
 request.waitUntilComplete() //Lets wait until all requests have completed.  No guarentee that all event handlers have been called when we release
 ```
 
-## Authors
+## Author
 
 * **Tyler Anger** - *Initial work* - [TheAngryDarling](https://github.com/TheAngryDarling)
 
