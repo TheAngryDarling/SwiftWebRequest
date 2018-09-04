@@ -18,17 +18,17 @@ public extension WebRequest {
         }
         
         // Event handler for when one of the child requests has started
-        public var singleRequestStarted: ((Int, WebRequest) -> Void)? = nil
+        public var singleRequestStarted: ((GroupRequest, Int, WebRequest) -> Void)? = nil
         // Event handler for when one of the child requests has resumed
-        public var singleRequestResumed: ((Int, WebRequest) -> Void)? = nil
+        public var singleRequestResumed: ((GroupRequest, Int, WebRequest) -> Void)? = nil
         // Event handler for when one of the child requests hsa been suspended
-        public var singleRequestSuspended: ((Int, WebRequest) -> Void)? = nil
+        public var singleRequestSuspended: ((GroupRequest, Int, WebRequest) -> Void)? = nil
         // Event handler for when one of the child requests has been cancelled
-        public var singleRequestCancelled: ((Int, WebRequest) -> Void)? = nil
+        public var singleRequestCancelled: ((GroupRequest, Int, WebRequest) -> Void)? = nil
         // Event handler for when on of the child reuquests has completed
-        public var singleRequestCompleted: ((Int, WebRequest) -> Void)? = nil
+        public var singleRequestCompleted: ((GroupRequest, Int, WebRequest) -> Void)? = nil
         // Event handler for when one of the child requests state has changed
-        public var singleRequestStateChanged: ((Int, WebRequest, WebRequest.State) -> Void)? = nil
+        public var singleRequestStateChanged: ((GroupRequest, Int, WebRequest, WebRequest.State) -> Void)? = nil
         
         private var completionHandler: (([WebRequest]) -> Void)? = nil
         private let completionHandlerLockingQueue: DispatchQueue = DispatchQueue(label: "org.webrequest.WebRequest.CompletionHandler.Locking")
@@ -291,22 +291,22 @@ public extension WebRequest {
             NotificationCenter.default.post(name: newNot, object: self, userInfo: info)
             
             if notification.name == Notification.Name.WebRequest.DidCancel {
-                if let handler = self.singleRequestCancelled { self.callAsyncEventHandler { handler(idx, request) } }
+                if let handler = self.singleRequestCancelled { self.callAsyncEventHandler { handler(self, idx, request) } }
                 self.requestsFinished[idx] = true
                 doCompleteCheck()
             } else if notification.name == Notification.Name.WebRequest.DidComplete {
-                if let handler = self.singleRequestCompleted { self.callAsyncEventHandler { handler(idx, request) } }
+                if let handler = self.singleRequestCompleted { self.callAsyncEventHandler { handler(self, idx, request) } }
                 self.requestsFinished[idx] = true
                 doCompleteCheck()
             } else if notification.name == Notification.Name.WebRequest.DidResume {
-                if let handler = self.singleRequestResumed { self.callAsyncEventHandler { handler(idx, request) } }
+                if let handler = self.singleRequestResumed { self.callAsyncEventHandler { handler(self, idx, request) } }
             } else if notification.name == Notification.Name.WebRequest.DidStart {
-                if let handler = self.singleRequestStarted { self.callAsyncEventHandler { handler(idx, request) } }
+                if let handler = self.singleRequestStarted { self.callAsyncEventHandler { handler(self, idx, request) } }
             } else if notification.name == Notification.Name.WebRequest.DidSuspend {
-                if let handler = self.singleRequestSuspended { self.callAsyncEventHandler { handler(idx, request) } }
+                if let handler = self.singleRequestSuspended { self.callAsyncEventHandler { handler(self, idx, request) } }
             } else if notification.name == Notification.Name.WebRequest.StateChanged {
                 if let state = info[Notification.Name.WebRequest.Keys.State] as? WebRequest.State {
-                    if let handler = self.singleRequestStateChanged { self.callAsyncEventHandler { handler(idx, request, state) } }
+                    if let handler = self.singleRequestStateChanged { self.callAsyncEventHandler { handler(self, idx, request, state) } }
                 }
             }
 
