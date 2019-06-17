@@ -6,28 +6,27 @@
 //
 
 import Foundation
+import Dispatch
 
 public extension WebRequest {
-    /*
-     GroupWebRequest allows for excuting multiple WebRequests at the same time
-    */
+    /// GroupWebRequest allows for excuting multiple WebRequests at the same time
     public class GroupRequest: WebRequest {
         
         enum Error: Swift.Error {
             case errors([Swift.Error])
         }
         
-        // Event handler for when one of the child requests has started
+        /// Event handler for when one of the child requests has started
         public var singleRequestStarted: ((GroupRequest, Int, WebRequest) -> Void)? = nil
-        // Event handler for when one of the child requests has resumed
+        /// Event handler for when one of the child requests has resumed
         public var singleRequestResumed: ((GroupRequest, Int, WebRequest) -> Void)? = nil
-        // Event handler for when one of the child requests hsa been suspended
+        /// Event handler for when one of the child requests hsa been suspended
         public var singleRequestSuspended: ((GroupRequest, Int, WebRequest) -> Void)? = nil
-        // Event handler for when one of the child requests has been cancelled
+        /// Event handler for when one of the child requests has been cancelled
         public var singleRequestCancelled: ((GroupRequest, Int, WebRequest) -> Void)? = nil
-        // Event handler for when on of the child reuquests has completed
+        /// Event handler for when on of the child reuquests has completed
         public var singleRequestCompleted: ((GroupRequest, Int, WebRequest) -> Void)? = nil
-        // Event handler for when one of the child requests state has changed
+        /// Event handler for when one of the child requests state has changed
         public var singleRequestStateChanged: ((GroupRequest, Int, WebRequest, WebRequest.State) -> Void)? = nil
         
         private var completionHandler: (([WebRequest]) -> Void)? = nil
@@ -39,7 +38,7 @@ public extension WebRequest {
             get { return self.operationQueue.maxConcurrentOperationCount }
             set { self.operationQueue.maxConcurrentOperationCount = newValue }
         }
-        // array of child web requsts
+        /// array of child web requsts
         public let requests: [WebRequest]
         private var requestsFinished: [Bool]
         private var suspendedRequests: [Int] = []
@@ -53,14 +52,14 @@ public extension WebRequest {
         public override var progress: Progress { return self._progress }
         #endif
         
-        // An array returning the errors of the child requests
+        /// An array returning the errors of the child requests
         public var errors: [Swift.Error?] {
             var rtn: [Swift.Error?] = []
             for t in self.requests { rtn.append(t.error) }
             return rtn
         }
         
-        // An array error of any errors from the child requsts
+        /// An array error of any errors from the child requsts
         public override var error: Swift.Error? {
             let errs = self.errors.compactMap({ return $0 })
             guard errs.count > 0 else { return nil }
@@ -69,7 +68,7 @@ public extension WebRequest {
         }
         
         
-        // The overall state of the child requests
+        /// The overall state of the child requests
         public override var state: WebRequest.State {
             guard !self.hasBeenCancelled else { return WebRequest.State.canceling }
             
@@ -90,15 +89,23 @@ public extension WebRequest {
         }
         
         
-        public init(_ requests: [WebRequest], maxConcurrentRequests: Int? = nil, queueName: String? = nil) {
-            
-            precondition(requests.count > 0, "Must have atleast one request in array")
+        /// Create new instance of a group request
+        ///
+        /// - Parameters:
+        ///   - requests: The individual requests to execute
+        ///   - maxConcurrentRequests: The maximun number of requests to execute in parallel
+        ///   - queueName: The queue name to use
+        public init(_ requests: @autoclosure ()->[WebRequest],
+                    maxConcurrentRequests: Int? = nil,
+                    queueName: String? = nil) {
+            let reqs = requests()
+            precondition(reqs.count > 0, "Must have atleast one request in array")
             
             if let mx = maxConcurrentRequests { self.operationQueue.maxConcurrentOperationCount = mx }
             if let name = queueName { self.operationQueue.name = name }
             self.operationQueue.isSuspended = true
-            self.requests = requests
-            self.requestsFinished = [Bool](repeating: false, count: requests.count)
+            self.requests = reqs
+            self.requestsFinished = [Bool](repeating: false, count: reqs.count)
             #if os(macOS) && os(iOS) && os(tvOS) && os(watchOS)
             var totalUnitsCount: Int64 = 0
             if #available (macOS 10.13, iOS 11.0, tvOS 11.0, watchOS 4.0, *) {
@@ -109,7 +116,7 @@ public extension WebRequest {
             super.init()
             
             
-            for t in requests {
+            for t in reqs {
                 //Propagate user info to child request
                 for (k,v) in self.userInfo { t.userInfo[k] = v }
                 // Links child to parent.
@@ -135,7 +142,14 @@ public extension WebRequest {
             
         }
         
-        public convenience init(_ requests: [WebRequest],
+        /// Create new instance of a group request
+        ///
+        /// - Parameters:
+        ///   - requests: The individual requests to execute
+        ///   - maxConcurrentRequests: The maximun number of requests to execute in parallel
+        ///   - queueName: The queue name to use
+        ///   - completionHandler: The call back when done executing
+        public convenience init(_ requests: @autoclosure ()->[WebRequest],
                                      maxConcurrentRequests: Int? = nil,
                                      queueName: String? = nil,
                                      completionHandler: @escaping ([WebRequest]) -> Void) {
@@ -143,6 +157,13 @@ public extension WebRequest {
             self.completionHandler = completionHandler
         }
         
+        /// Create new instance of a group request
+        ///
+        /// - Parameters:
+        ///   - requests: The individual requests to execute
+        ///   - maxConcurrentRequests: The maximun number of requests to execute in parallel
+        ///   - queueName: The queue name to use
+        ///   - completionHandler: The call back when done executing
         public convenience init(_ requests: WebRequest...,
                                 maxConcurrentRequests: Int? = nil,
                                 queueName: String? = nil,
@@ -153,20 +174,33 @@ public extension WebRequest {
                       completionHandler: completionHandler)
         }
         
-        public convenience init(_ requests: [URLRequest],
-                                usingSession session: URLSession,
+        /// Create new instance of a group request
+        ///
+        /// - Parameters:
+        ///   - requests: The individual requests to execute
+        ///   - session: The URL Session to use when executing the requests
+        ///   - maxConcurrentRequests: The maximun number of requests to execute in parallel
+        ///   - queueName: The queue name to use
+        public convenience init(_ requests: @autoclosure ()->[URLRequest],
+                                usingSession session: @autoclosure ()->URLSession,
                                 maxConcurrentRequests: Int? = nil,
                                 queueName: String? = nil) {
-            
-            let webRequests = requests.map( { SingleRequest($0, usingSession: session) })
+            let webRequests = requests().map( { SingleRequest($0, usingSession: session) })
             self.init(webRequests,
                       maxConcurrentRequests: maxConcurrentRequests,
                       queueName: queueName)
             
         }
         
+        /// Create new instance of a group request
+        ///
+        /// - Parameters:
+        ///   - requests: The individual requests to execute
+        ///   - session: The URL Session to use when executing the requests
+        ///   - maxConcurrentRequests: The maximun number of requests to execute in parallel
+        ///   - queueName: The queue name to use
         public convenience init(_ requests: URLRequest...,
-                                usingSession session: URLSession,
+                                usingSession session: @autoclosure ()->URLSession,
                                 maxConcurrentRequests: Int? = nil,
                                 queueName: String? = nil) {
             self.init(requests,
@@ -175,13 +209,21 @@ public extension WebRequest {
                       queueName: queueName)
         }
         
-        public convenience init(_ requests: [URLRequest],
-                                usingSession session: URLSession,
+        /// Create new instance of a group request
+        ///
+        /// - Parameters:
+        ///   - requests: The individual requests to execute
+        ///   - session: The URL Session to use when executing the requests
+        ///   - maxConcurrentRequests: The maximun number of requests to execute in parallel
+        ///   - queueName: The queue name to use
+        ///   - completionHandler: The call back when done executing
+        public convenience init(_ requests: @autoclosure ()->[URLRequest],
+                                usingSession session: @autoclosure ()->URLSession,
                                 maxConcurrentRequests: Int? = nil,
                                 queueName: String? = nil,
                                 completionHandler: @escaping ([WebRequest]) -> Void) {
             
-            let webRequests = requests.map( { SingleRequest($0, usingSession: session) })
+            let webRequests = requests().map( { SingleRequest($0, usingSession: session) })
             self.init(webRequests,
                       maxConcurrentRequests: maxConcurrentRequests,
                       queueName: queueName,
@@ -189,8 +231,16 @@ public extension WebRequest {
             
         }
         
+        /// Create new instance of a group request
+        ///
+        /// - Parameters:
+        ///   - requests: The individual requests to execute
+        ///   - session: The URL Session to use when executing the requests
+        ///   - maxConcurrentRequests: The maximun number of requests to execute in parallel
+        ///   - queueName: The queue name to use
+        ///   - completionHandler: The call back when done executing
         public convenience init(_ requests: URLRequest...,
-                                usingSession session: URLSession,
+                                usingSession session: @autoclosure ()->URLSession,
                                 maxConcurrentRequests: Int? = nil,
                                 queueName: String? = nil,
                                 completionHandler: @escaping ([WebRequest]) -> Void) {
@@ -201,21 +251,34 @@ public extension WebRequest {
                       completionHandler: completionHandler)
         }
         
-        
-        public convenience init(_ urls: [URL],
-                                usingSession session: URLSession,
+        /// Create new instance of a group request
+        ///
+        /// - Parameters:
+        ///   - urls: The individual urls to execute
+        ///   - session: The URL Session to use when executing the requests
+        ///   - maxConcurrentRequests: The maximun number of requests to execute in parallel
+        ///   - queueName: The queue name to use
+        public convenience init(_ urls: @autoclosure ()->[URL],
+                                usingSession session: @autoclosure ()->URLSession,
                                 maxConcurrentRequests: Int? = nil,
                                 queueName: String? = nil) {
             
-            let webRequests = urls.map( { SingleRequest(URLRequest(url: $0), usingSession: session) })
+            let webRequests = urls().map( { SingleRequest(URLRequest(url: $0), usingSession: session) })
             self.init(webRequests,
                       maxConcurrentRequests: maxConcurrentRequests,
                       queueName: queueName)
             
         }
         
+        /// Create new instance of a group request
+        ///
+        /// - Parameters:
+        ///   - urls: The individual urls to execute
+        ///   - session: The URL Session to use when executing the requests
+        ///   - maxConcurrentRequests: The maximun number of requests to execute in parallel
+        ///   - queueName: The queue name to use
         public convenience init(_ urls: URL...,
-                                usingSession session: URLSession,
+                                usingSession session: @autoclosure ()->URLSession,
                                 maxConcurrentRequests: Int? = nil,
                                 queueName: String? = nil) {
             self.init(urls,
@@ -224,13 +287,21 @@ public extension WebRequest {
                       queueName: queueName)
         }
         
-        public convenience init(_ urls: [URL],
-                                usingSession session: URLSession,
+        /// Create new instance of a group request
+        ///
+        /// - Parameters:
+        ///   - urls: The individual urls to execute
+        ///   - session: The URL Session to use when executing the requests
+        ///   - maxConcurrentRequests: The maximun number of requests to execute in parallel
+        ///   - queueName: The queue name to use
+        ///   - completionHandler: The call back when done executing
+        public convenience init(_ urls: @autoclosure ()->[URL],
+                                usingSession session: @autoclosure ()->URLSession,
                                 maxConcurrentRequests: Int? = nil,
                                 queueName: String? = nil,
                                 completionHandler: @escaping ([WebRequest]) -> Void) {
             
-            let webRequests = urls.map( { SingleRequest(URLRequest(url: $0), usingSession: session) })
+            let webRequests = urls().map( { SingleRequest(URLRequest(url: $0), usingSession: session) })
             self.init(webRequests,
                       maxConcurrentRequests: maxConcurrentRequests,
                       queueName: queueName,
@@ -238,8 +309,16 @@ public extension WebRequest {
             
         }
         
+        /// Create new instance of a group request
+        ///
+        /// - Parameters:
+        ///   - urls: The individual urls to execute
+        ///   - session: The URL Session to use when executing the requests
+        ///   - maxConcurrentRequests: The maximun number of requests to execute in parallel
+        ///   - queueName: The queue name to use
+        ///   - completionHandler: The call back when done executing
         public convenience init(_ urls: URL...,
-                                usingSession session: URLSession,
+                                usingSession session: @autoclosure ()->URLSession,
                                 maxConcurrentRequests: Int? = nil,
                                 queueName: String? = nil,
                                 completionHandler: @escaping ([WebRequest]) -> Void) {
@@ -313,7 +392,7 @@ public extension WebRequest {
         }
         
         
-        // Resumes the task, if it is suspended.
+        /// Resumes the task, if it is suspended.
         public override func resume() {
             
             if self.suspendedRequests.count == 0 { self.operationQueue.isSuspended = false }
@@ -327,7 +406,7 @@ public extension WebRequest {
         }
         
         
-        // Temporarily suspends a task.
+        /// Temporarily suspends a task.
         public override func suspend() {
             guard self.suspendedRequests.count == 0 else { return }
             
@@ -343,7 +422,7 @@ public extension WebRequest {
             super.suspend()
         }
         
-        // Cancels the task
+        /// Cancels the task
         public override func cancel() {
             
             //Cancel all outstanding requests

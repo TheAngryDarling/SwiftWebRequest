@@ -6,23 +6,24 @@
 //
 
 import Foundation
+import Dispatch
 
 public extension WebRequest {
     
     public struct RepeatedRequestConstants {
-        // Default interval between repeated requests
-        public static let DEFAULT_REPEAT_INTERVAL: TimeInterval = 60
+        /// Default interval between repeated requests
+        public static let DEFAULT_REPEAT_INTERVAL: TimeInterval = 5
     }
     
-    /*
-     RepeatedRequest allows for excuting the same request repeatidly until a certain condition.
-     Its good for when polling a server for some sort of state change like running a task and waiting for it to complete
-     */
+    /// RepeatedRequest allows for excuting the same request repeatidly until a certain condition.
+    /// Its good for when polling a server for some sort of state change like running a task and waiting for it to complete
     @available(macOS 10.12, iOS 10.0, tvOS 10.0, watchOS 3.0, *)
     public class RepeatedRequest<T>: WebRequest {
         
         public enum RepeatResults {
+            /// Indicator that the RepeatedRequest should continue
             case `repeat`
+            /// Indicator that the RepeatedRequest should stop
             case results(T?)
             
             fileprivate var shouldRepeat: Bool {
@@ -55,16 +56,17 @@ public extension WebRequest {
         private let completionHandlerLockingQueue: DispatchQueue = DispatchQueue(label: "org.webrequest.WebRequest.CompletionHandler.Locking")
         private var hasCalledCompletionHandler: Bool = false
         
-        //Repeat handler is the event handler that gets called to indicate if the class should repeat or not.  It allwos for results to be passed from here to the completion handler so they do not need to be parsed twice.
+        /// Repeat handler is the event handler that gets called to indicate if the class should repeat or not.
+        /// It allwos for results to be passed from here to the completion handler so they do not need to be parsed twice.
         private var repeatHandler: ((RepeatedRequest<T>, SingleRequest.Results, Int) throws -> RepeatResults)? = nil
         
         
-        // The URL request object currently being handled by the request.
+        /// The URL request object currently being handled by the request.
         public private(set) var currentRequest: URLRequest
-        // The original request object passed when the request was created.
+        /// The original request object passed when the request was created.
         public let originalRequest: URLRequest
      
-        // Create a new WebRequest using the provided request and session.
+        /// Create a new WebRequest using the provided request and session.
         public init(_ request: @escaping @autoclosure () -> URLRequest,
                     usingSession session: @escaping @autoclosure () -> URLSession,
                     repeatInterval: TimeInterval = RepeatedRequestConstants.DEFAULT_REPEAT_INTERVAL,

@@ -10,9 +10,9 @@ import Foundation
 
 extension WebRequest {
     
-    // Used for response.textEncodingName to String.Encoding
+    /// Used for response.textEncodingName to String.Encoding
     fileprivate struct StringEncoding {
-        #if os(macOS) && os(iOS) && os(tvOS) && os(watchOS)
+        #if os(macOS) || os(iOS) || os(tvOS) || os(watchOS)
         public static func encodingNameToStringEncoding(_ name: String) -> String.Encoding? {
             let cfe = CFStringConvertIANACharSetNameToEncoding(name as CFString)
             if cfe == kCFStringEncodingInvalidId { return nil }
@@ -306,23 +306,21 @@ extension WebRequest {
 }
 
 public extension WebRequest {
-    /*
-     Allows for a single web request
-    */
+    /// Allows for a single web request
     public class SingleRequest: WebRequest {
         
         
         
-        //Results container for request response
+        /// Results container for request response
         public struct Results {
             public let request: URLRequest
             public let response: URLResponse?
             public let error: Error?
             public private(set) var data: Data?
             
-            // The original url of the request
+            /// The original url of the request
             public var originalURL: URL? { return request.url }
-            // The url from the response.   This could differ from the originalURL if there were redirects
+            /// The url from the response.   This could differ from the originalURL if there were redirects
             public var currentURL: URL? {
                 if let r = response?.url { return r }
                 else { return originalURL }
@@ -332,7 +330,8 @@ public extension WebRequest {
                 return (self.response != nil || self.error != nil || self.data != nil)
             }
             
-            // Trys to convert the resposne data to a string using the response.textEncodingName if provided.  If not it will use the defaultEncoding that is passed into the method
+            /// Trys to convert the resposne data to a string using the response.textEncodingName if provided.
+            /// If not it will use the defaultEncoding that is passed into the method
             public func responseString(defaultEncoding encoding: String.Encoding = .utf8) -> String? {
                 guard let response = self.response else { return nil }
                 guard let data = self.data else { return nil }
@@ -351,7 +350,9 @@ public extension WebRequest {
                 self.data = data
             }
             
-            // Allows for clearing of the reponse data.  This can be handy when working with GroupRequests with a lot of data.  That way you can process each request as it comes in and clear the data so its not sitting in memeory until all requests are finished
+            /// Allows for clearing of the reponse data.
+            /// This can be handy when working with GroupRequests with a lot of data.
+            /// That way you can process each request as it comes in and clear the data so its not sitting in memeory until all requests are finished
             internal mutating func emptyData() {
                 self.data?.removeAll()
                 self.data = nil
@@ -362,7 +363,7 @@ public extension WebRequest {
         
         private var task: URLSessionDataTask
         
-        // Results from the request
+        /// Results from the request
         public private(set) var results: Results
         private var completionHandler: ((Results) -> Void)? = nil
         
@@ -388,43 +389,48 @@ public extension WebRequest {
             
         }
         
-        // The URL request object currently being handled by the request.
+        /// The URL request object currently being handled by the request.
         public var currentRequest: URLRequest? { return self.task.currentRequest }
-        // The original request object passed when the request was created.
+        /// The original request object passed when the request was created.
         public private(set) var originalRequest: URLRequest?
-        // The server’s response to the currently active request.
+        /// The server’s response to the currently active request.
         public var response: URLResponse? { return self.task.response }
         
-        // An app-provided description of the current request.
+        /// An app-provided description of the current request.
         public var webDescription: String? {
             get { return self.task.taskDescription }
             set { self.task.taskDescription = newValue }
         }
-        // An identifier uniquely identifies the task within a given session.
+        /// An identifier uniquely identifies the task within a given session.
         public var taskIdentifier: Int { return self.task.taskIdentifier }
         
         public override var error: Swift.Error? { return self.task.error }
         
-        // The relative priority at which you’d like a host to handle the task, specified as a floating point value between 0.0 (lowest priority) and 1.0 (highest priority).
+        /// The relative priority at which you’d like a host to handle the task, specified as a floating point value between 0.0 (lowest priority) and 1.0 (highest priority).
         public var priority: Float {
             get { return self.task.priority }
             set { self.task.priority = newValue }
         }
         
         #if os(macOS) && os(iOS) && os(tvOS) && os(watchOS)
-        // A representation of the overall request progress
+        /// A representation of the overall request progress
         @available (macOS 10.13, iOS 11.0, tvOS 11.0, watchOS 4.0, *)
         public override var progress: Progress { return self.task.progress }
         #endif
-         // Create a new WebRequest using the provided url and session.
-        public init(_ request: URLRequest, usingSession session: URLSession) {
-            self.originalRequest = request
+        /// Create a new WebRequest using the provided url and session.
+        ///
+        /// - Parameters:
+        ///   - request: The request to execute
+        ///   - session: The URL Session to execute the request on
+        public init(_ request: @autoclosure ()->URLRequest, usingSession session: @autoclosure ()->URLSession) {
+            let req = request()
+            self.originalRequest = req
             self.task = URLSessionDataTask()
-            self.results = Results(request: request)
+            self.results = Results(request: req)
             super.init()
-            self.task = session.dataTask(with: request) { data, response, error in
+            self.task = session().dataTask(with: req) { data, response, error in
                 
-                self.results = Results(request: request, response: response, error: error, data: data)
+                self.results = Results(request: req, response: response, error: error, data: data)
 
                 // Must do this otherwise things might just hang in limbo
                 self.triggerStateChange(.completed)
@@ -436,35 +442,53 @@ public extension WebRequest {
             }
         }
         
-         // Create a new WebRequest using the provided url and session
-        public convenience init(_ url: URL, usingSession session: URLSession) {
-            self.init(URLRequest(url: url), usingSession: session)
+        /// Create a new WebRequest using the provided url and session
+        ///
+        /// - Parameters:
+        ///   - url: The url to request
+        ///   - session: The URL Session to execute the request on
+        public convenience init(_ url: @autoclosure ()->URL, usingSession session: @autoclosure ()->URLSession) {
+            self.init(URLRequest(url: url()), usingSession: session)
         }
         
-         // Create a new WebRequest using the provided requset and session. and call the completionHandler when finished
-        public convenience init(_ request: URLRequest, usingSession session: URLSession, completionHandler: @escaping (Results) -> Void) {
+        /// Create a new WebRequest using the provided requset and session. and call the completionHandler when finished
+        ///
+        /// - Parameters:
+        ///   - request: The request to execute
+        ///   - session: The URL Session to execute the request on
+        ///   - completionHandler: The call back when done executing
+        public convenience init(_ request: @autoclosure ()->URLRequest,
+                                usingSession session: @autoclosure ()->URLSession,
+                                completionHandler: @escaping (Results) -> Void) {
             self.init(request, usingSession: session)
             self.completionHandler = completionHandler
         }
         
-        // Create a new WebRequest using the provided url and session. and call the completionHandler when finished
-        public convenience init(_ url: URL, usingSession session: URLSession, completionHandler: @escaping (Results) -> Void) {
-            self.init(URLRequest(url: url), usingSession: session, completionHandler: completionHandler)
+        /// Create a new WebRequest using the provided url and session. and call the completionHandler when finished
+        ///
+        /// - Parameters:
+        ///   - url: The url to request
+        ///   - session: The URL Session to execute the request on
+        ///   - completionHandler: The call back when done executing
+        public convenience init(_ url: @autoclosure ()->URL,
+                                usingSession session: @autoclosure ()->URLSession,
+                                completionHandler: @escaping (Results) -> Void) {
+            self.init(URLRequest(url: url()), usingSession: session, completionHandler: completionHandler)
         }
         
-        // Resumes the request, if it is suspended.
+        /// Resumes the request, if it is suspended.
         public override func resume() {
             super.resume()
             self.task.resume()
         }
         
-        // Temporarily suspends a request.
+        /// Temporarily suspends a request.
         public override func suspend() {
             super.suspend()
             self.task.suspend()
         }
         
-        // Cancels the request
+        /// Cancels the request
         public override func cancel() {
             
             //Setup results for cancelled requests
@@ -480,7 +504,9 @@ public extension WebRequest {
             
         }
         
-        // Allows for clearing of the reponse data.  This can be handy when working with GroupRequests with a lot of data.  That way you can process each request as it comes in and clear the data so its not sitting in memeory until all requests are finished
+        /// Allows for clearing of the reponse data.
+        /// This can be handy when working with GroupRequests with a lot of data.
+        /// That way you can process each request as it comes in and clear the data so its not sitting in memeory until all requests are finished
         public func emptyResultsData() {
             self.results.emptyData()
         }
