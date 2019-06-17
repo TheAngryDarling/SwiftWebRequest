@@ -1,4 +1,5 @@
 import XCTest
+import Dispatch
 @testable import WebRequest
 
 final class WebRequestTests: XCTestCase {
@@ -128,7 +129,9 @@ final class WebRequestTests: XCTestCase {
     
     func testRepeatRequest() {
         
-        func repeatHandler(_ request: WebRequest.RepeatedRequest<Void>, _ results: WebRequest.SingleRequest.Results, _ repeatCount: Int) -> WebRequest.RepeatedRequest<Void>.RepeatResults {
+        func repeatHandler(_ request: WebRequest.RepeatedRequest<Void>,
+                           _ results: WebRequest.SingleRequest.Results,
+                           _ repeatCount: Int) -> WebRequest.RepeatedRequest<Void>.RepeatResults {
             
             print("[\(repeatCount)] - \(results.originalURL!) - Finished")
             if repeatCount < 5 { return WebRequest.RepeatedRequest<Void>.RepeatResults.repeat }
@@ -179,7 +182,7 @@ final class WebRequestTests: XCTestCase {
     }
     
     
-    #if os(macOS) && os(iOS) && os(tvOS) && os(watchOS)
+    #if os(macOS) || os(iOS) || os(tvOS) || os(watchOS)
     func testEncodingNames() {
         let encodingString: [String] = ["1",
                     "437",
