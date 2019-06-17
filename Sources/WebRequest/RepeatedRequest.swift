@@ -17,7 +17,6 @@ public extension WebRequest {
     
     /// RepeatedRequest allows for excuting the same request repeatidly until a certain condition.
     /// Its good for when polling a server for some sort of state change like running a task and waiting for it to complete
-    @available(macOS 10.12, iOS 10.0, tvOS 10.0, watchOS 3.0, *)
     public class RepeatedRequest<T>: WebRequest {
         
         public enum RepeatResults {
