@@ -307,7 +307,7 @@ extension WebRequest {
 
 public extension WebRequest {
     /// Allows for a single web request
-    public class SingleRequest: WebRequest {
+    class SingleRequest: WebRequest {
         
         
         
@@ -373,19 +373,22 @@ public extension WebRequest {
                 return WebRequest.State(rawValue: self.task.state.rawValue)!
             }
             
-            #if os(macOS) || os(iOS) || os(tvOS) || os(watchOS)
-            if let e = self.results.error as NSError?, e.code == NSURLErrorCancelled {
+            #if os(macOS) || os(iOS) || os(tvOS) || os(watchOS) || swift(>=4.1.4)
+             if let e = self.results.error, (e as NSError).code == NSURLErrorCancelled {
                 return WebRequest.State.canceling
-            } else {
+             } else {
                 return WebRequest.State.completed
-            }
+             }
             #else
-            if let e = self.results.error as? NSError, e.code == NSURLErrorCancelled {
+             if let e = self.results.error, let nsE = e as? NSError, nsE.code == NSURLErrorCancelled {
                 return WebRequest.State.canceling
-            } else {
+             } else {
                 return WebRequest.State.completed
-            }
+             }
             #endif
+            
+            
+            //#warning ("This is a warning test")
             
         }
         
@@ -412,7 +415,7 @@ public extension WebRequest {
             set { self.task.priority = newValue }
         }
         
-        #if os(macOS) && os(iOS) && os(tvOS) && os(watchOS)
+        #if os(macOS) || os(iOS) || os(tvOS) || os(watchOS)
         /// A representation of the overall request progress
         @available (macOS 10.13, iOS 11.0, tvOS 11.0, watchOS 4.0, *)
         public override var progress: Progress { return self.task.progress }
