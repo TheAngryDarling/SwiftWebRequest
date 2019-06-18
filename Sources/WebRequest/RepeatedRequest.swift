@@ -10,14 +10,14 @@ import Dispatch
 
 public extension WebRequest {
     
-    public struct RepeatedRequestConstants {
+    struct RepeatedRequestConstants {
         /// Default interval between repeated requests
         public static let DEFAULT_REPEAT_INTERVAL: TimeInterval = 5
     }
     
     /// RepeatedRequest allows for excuting the same request repeatidly until a certain condition.
     /// Its good for when polling a server for some sort of state change like running a task and waiting for it to complete
-    public class RepeatedRequest<T>: WebRequest {
+    class RepeatedRequest<T>: WebRequest {
         
         public enum RepeatResults {
             /// Indicator that the RepeatedRequest should continue
@@ -45,6 +45,15 @@ public extension WebRequest {
         private var webRequest: SingleRequest? = nil
         //private let request: URLRequest
         //private let session: URLSession
+        
+        private var _error: Error? = nil
+        public override var error: Error? { return _error }
+        
+        #if os(macOS) || os(iOS) || os(tvOS) || os(watchOS)
+        private var _progress: Progress
+        @available (macOS 10.13, iOS 11.0, tvOS 11.0, watchOS 4.0, *)
+        public override var progress: Progress { return self._progress }
+        #endif
         
         
         
@@ -80,6 +89,11 @@ public extension WebRequest {
             
             self.originalRequest = request()
             self.currentRequest = originalRequest
+            
+            #if os(macOS) || os(iOS) || os(tvOS) || os(watchOS)
+            self._progress = Progress(totalUnitCount: 0)
+            #endif
+            
             
             super.init()
             
@@ -160,6 +174,7 @@ public extension WebRequest {
                     }
                 } else {
                     self._state = .completed
+                    self._error = err
                     // We are no longer repeating.  Lets trigger the proper event handlers.
                     self.triggerStateChange(.completed)
                     self.completionHandlerLockingQueue.sync { self.hasCalledCompletionHandler = true }
@@ -181,8 +196,7 @@ public extension WebRequest {
                                                        queue: nil,
                                                        using: self.webRequestEventMonitor)
             self.webRequest = wR
-            
-            
+    
             wR.resume()
         }
         
