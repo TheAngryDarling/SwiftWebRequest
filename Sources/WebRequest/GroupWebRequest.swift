@@ -10,7 +10,7 @@ import Dispatch
 
 public extension WebRequest {
     /// GroupWebRequest allows for excuting multiple WebRequests at the same time
-    public class GroupRequest: WebRequest {
+    class GroupRequest: WebRequest {
         
         enum Error: Swift.Error {
             case errors([Swift.Error])
@@ -46,7 +46,7 @@ public extension WebRequest {
         private var hasBeenCancelled: Bool = false
         
         
-        #if os(macOS) && os(iOS) && os(tvOS) && os(watchOS)
+        #if os(macOS) || os(iOS) || os(tvOS) || os(watchOS)
         private var _progress: Progress
         @available (macOS 10.13, iOS 11.0, tvOS 11.0, watchOS 4.0, *)
         public override var progress: Progress { return self._progress }
@@ -106,10 +106,10 @@ public extension WebRequest {
             self.operationQueue.isSuspended = true
             self.requests = reqs
             self.requestsFinished = [Bool](repeating: false, count: reqs.count)
-            #if os(macOS) && os(iOS) && os(tvOS) && os(watchOS)
+            #if os(macOS) || os(iOS) || os(tvOS) || os(watchOS)
             var totalUnitsCount: Int64 = 0
             if #available (macOS 10.13, iOS 11.0, tvOS 11.0, watchOS 4.0, *) {
-                totalUnitsCount = requests.reduce(0, {$0 + $1.progress.totalUnitCount })
+                totalUnitsCount = reqs.reduce(0, {$0 + $1.progress.totalUnitCount })
             }
             self._progress = Progress(totalUnitCount: totalUnitsCount)
             #endif
