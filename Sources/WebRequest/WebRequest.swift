@@ -30,7 +30,7 @@ open class WebRequest: NSObject {
     public var state: State { fatalError("Not Impelemented") }
     
     
-    #if os(macOS) && os(iOS) && os(tvOS) && os(watchOS)
+    #if os(macOS) || os(iOS) || os(tvOS) || os(watchOS)
     /// The progress of the request
     @available (macOS 10.13, iOS 11.0, tvOS 11.0, watchOS 4.0, *)
     public var progress: Progress { fatalError("Not Impelemented") }
@@ -61,6 +61,9 @@ open class WebRequest: NSObject {
     
     private let requestWorkingDispatchGroup = DispatchGroup()
     private var hasAlreadyLeftWorkGroup: Bool = false
+    
+    /// A unique UUID for this request object
+    public let uid: String
     
     internal func triggerStateChange(_ state: WebRequest.State) {
         if let handler = requestStateChanged {
@@ -123,7 +126,9 @@ open class WebRequest: NSObject {
         
     }
     
-    internal override init() { }
+    internal override init() {
+        self.uid = UUID().uuidString
+    }
     deinit {
         self.userInfo.removeAll()
     }
