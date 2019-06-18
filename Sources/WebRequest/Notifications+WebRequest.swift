@@ -8,7 +8,7 @@
 import Foundation
 
 public extension Notification.Name {
-    public struct WebRequest {
+    struct WebRequest {
         
         public struct Keys {
             public static let State = "org.webrequest.notification.key.state"
