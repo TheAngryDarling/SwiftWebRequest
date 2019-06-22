@@ -135,9 +135,11 @@ open class WebRequest: NSObject {
     
     internal func callAsyncEventHandler(handler: @escaping () -> Void) {
         eventHandlerQueue.async {
+            #if os(macOS) || os(iOS) || os(tvOS) || os(watchOS) || swift(>=4.1)
             let currentThreadName = Thread.current.name
             defer { Thread.current.name = currentThreadName }
             if Thread.current.name == nil || Thread.current.name == "" { Thread.current.name = "WebRequest.Events" }
+            #endif
             
             handler()
         }
@@ -145,9 +147,11 @@ open class WebRequest: NSObject {
     
     internal func callSyncEventHandler(handler: @escaping () -> Void) {
         eventHandlerQueue.sync {
+            #if os(macOS) || os(iOS) || os(tvOS) || os(watchOS) || swift(>=4.1)
             let currentThreadName = Thread.current.name
             defer { Thread.current.name = currentThreadName }
             if Thread.current.name == nil || Thread.current.name == "" { Thread.current.name = "WebRequest.Events" }
+            #endif
             
             handler()
         }
