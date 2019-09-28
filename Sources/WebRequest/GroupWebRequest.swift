@@ -7,6 +7,11 @@
 
 import Foundation
 import Dispatch
+#if swift(>=4.1)
+    #if canImport(FoundationXML)
+        import FoundationNetworking
+    #endif
+#endif
 
 public extension WebRequest {
     /// GroupWebRequest allows for excuting multiple WebRequests at the same time
@@ -46,7 +51,7 @@ public extension WebRequest {
         private var hasBeenCancelled: Bool = false
         
         
-        #if os(macOS) || os(iOS) || os(tvOS) || os(watchOS)
+        #if _runtime(_ObjC)
         private var _progress: Progress
         @available (macOS 10.13, iOS 11.0, tvOS 11.0, watchOS 4.0, *)
         public override var progress: Progress { return self._progress }
@@ -106,7 +111,7 @@ public extension WebRequest {
             self.operationQueue.isSuspended = true
             self.requests = reqs
             self.requestsFinished = [Bool](repeating: false, count: reqs.count)
-            #if os(macOS) || os(iOS) || os(tvOS) || os(watchOS)
+            #if _runtime(_ObjC)
             var totalUnitsCount: Int64 = 0
             if #available (macOS 10.13, iOS 11.0, tvOS 11.0, watchOS 4.0, *) {
                 totalUnitsCount = reqs.reduce(0, {$0 + $1.progress.totalUnitCount })
@@ -128,7 +133,7 @@ public extension WebRequest {
                                                            queue: nil,
                                                            using: self.webRequestEventMonitor)
                 
-                #if os(macOS) && os(iOS) && os(tvOS) && os(watchOS)
+                #if _runtime(_ObjC)
                 if #available (macOS 10.13, iOS 11.0, tvOS 11.0, watchOS 4.0, *) {
                     self._progress.addChild(t.progress, withPendingUnitCount: t.progress.totalUnitCount)
                 }

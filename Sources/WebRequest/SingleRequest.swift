@@ -6,13 +6,18 @@
 //
 
 import Foundation
+#if swift(>=4.1)
+    #if canImport(FoundationXML)
+        import FoundationNetworking
+    #endif
+#endif
 
 
 extension WebRequest {
     
     /// Used for response.textEncodingName to String.Encoding
     fileprivate struct StringEncoding {
-        #if os(macOS) || os(iOS) || os(tvOS) || os(watchOS)
+        #if _runtime(_ObjC)
         public static func encodingNameToStringEncoding(_ name: String) -> String.Encoding? {
             let cfe = CFStringConvertIANACharSetNameToEncoding(name as CFString)
             if cfe == kCFStringEncodingInvalidId { return nil }
@@ -373,7 +378,7 @@ public extension WebRequest {
                 return WebRequest.State(rawValue: self.task.state.rawValue)!
             }
             
-            #if os(macOS) || os(iOS) || os(tvOS) || os(watchOS) || swift(>=4.1.4)
+            #if _runtime(_ObjC) || swift(>=4.1.4)
              if let e = self.results.error, (e as NSError).code == NSURLErrorCancelled {
                 return WebRequest.State.canceling
              } else {
@@ -415,7 +420,7 @@ public extension WebRequest {
             set { self.task.priority = newValue }
         }
         
-        #if os(macOS) || os(iOS) || os(tvOS) || os(watchOS)
+        #if _runtime(_ObjC)
         /// A representation of the overall request progress
         @available (macOS 10.13, iOS 11.0, tvOS 11.0, watchOS 4.0, *)
         public override var progress: Progress { return self.task.progress }
@@ -516,7 +521,7 @@ public extension WebRequest {
         
         
         internal static func createCancelationError(forURL url: URL) -> Error {
-            #if os(macOS) || os(iOS) || os(tvOS) || os(watchOS)
+            #if _runtime(_ObjC)
             var uInfo: [String: Any] = [:]
             uInfo[NSURLErrorFailingURLStringErrorKey] = "\(url)"
             uInfo[NSURLErrorFailingURLErrorKey] = url

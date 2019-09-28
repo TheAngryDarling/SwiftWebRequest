@@ -1,6 +1,11 @@
 import XCTest
 import Dispatch
 @testable import WebRequest
+#if swift(>=4.1)
+    #if canImport(FoundationXML)
+        import FoundationNetworking
+    #endif
+#endif
 
 final class WebRequestTests: XCTestCase {
     func testSingleRequest() {
@@ -182,7 +187,7 @@ final class WebRequestTests: XCTestCase {
     }
     
     
-    #if os(macOS) || os(iOS) || os(tvOS) || os(watchOS)
+    #if _runtime(_ObjC)
     func testEncodingNames() {
         let encodingString: [String] = ["1",
                     "437",

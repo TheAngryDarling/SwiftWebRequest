@@ -7,6 +7,11 @@
 
 import Foundation
 import Dispatch
+#if swift(>=4.1)
+    #if canImport(FoundationXML)
+        import FoundationNetworking
+    #endif
+#endif
 
 public extension WebRequest {
     
@@ -49,7 +54,7 @@ public extension WebRequest {
         private var _error: Error? = nil
         public override var error: Error? { return _error }
         
-        #if os(macOS) || os(iOS) || os(tvOS) || os(watchOS)
+        #if _runtime(_ObjC)
         private var _progress: Progress
         @available (macOS 10.13, iOS 11.0, tvOS 11.0, watchOS 4.0, *)
         public override var progress: Progress { return self._progress }
@@ -90,7 +95,7 @@ public extension WebRequest {
             self.originalRequest = request()
             self.currentRequest = originalRequest
             
-            #if os(macOS) || os(iOS) || os(tvOS) || os(watchOS)
+            #if _runtime(_ObjC)
             self._progress = Progress(totalUnitCount: 0)
             #endif
             

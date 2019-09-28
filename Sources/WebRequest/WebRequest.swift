@@ -30,7 +30,7 @@ open class WebRequest: NSObject {
     public var state: State { fatalError("Not Impelemented") }
     
     
-    #if os(macOS) || os(iOS) || os(tvOS) || os(watchOS)
+    #if _runtime(_ObjC)
     /// The progress of the request
     @available (macOS 10.13, iOS 11.0, tvOS 11.0, watchOS 4.0, *)
     public var progress: Progress { fatalError("Not Impelemented") }
@@ -135,7 +135,7 @@ open class WebRequest: NSObject {
     
     internal func callAsyncEventHandler(handler: @escaping () -> Void) {
         eventHandlerQueue.async {
-            #if os(macOS) || os(iOS) || os(tvOS) || os(watchOS) || swift(>=4.1)
+            #if _runtime(_ObjC) || swift(>=4.1)
             let currentThreadName = Thread.current.name
             defer { Thread.current.name = currentThreadName }
             if Thread.current.name == nil || Thread.current.name == "" { Thread.current.name = "WebRequest.Events" }
@@ -147,7 +147,7 @@ open class WebRequest: NSObject {
     
     internal func callSyncEventHandler(handler: @escaping () -> Void) {
         eventHandlerQueue.sync {
-            #if os(macOS) || os(iOS) || os(tvOS) || os(watchOS) || swift(>=4.1)
+            #if _runtime(_ObjC) || swift(>=4.1)
             let currentThreadName = Thread.current.name
             defer { Thread.current.name = currentThreadName }
             if Thread.current.name == nil || Thread.current.name == "" { Thread.current.name = "WebRequest.Events" }
