@@ -65,12 +65,20 @@ public extension WebRequest {
             private init(_ choice: Choice) { self.choice = choice }
             
             
+            /// Create new generator using the given URLRequest
+            /// - parameters:
+            ///   - generator: The method used to retrieve the URLRequest
+            ///   - update: The method used to update the requets parameters and headers
             public static func request(_ generate: @escaping (URLRequest?, Int) -> URLRequest,
                                    update: ((_ parameters: inout [URLQueryItem]?,
                                               _ headers: inout [String: String]?,
                                               _ repeatCount: Int) -> Void)? = nil) -> RequestGenerator {
                 return .init(.request(generate, update))
             }
+            /// Create new generator using the given URLRequest
+            /// - parameters:
+            ///   - generator: The method used to retrieve the URLRequest
+            ///   - update: The method used to update the requets parameters and headers
             public static func request(_ generate: @escaping @autoclosure() -> URLRequest,
                                    update: ((_ parameters: inout [URLQueryItem]?,
                                               _ headers: inout [String: String]?,
@@ -78,20 +86,33 @@ public extension WebRequest {
                 return .init(.request({ _,_ in return generate() }, update))
             }
             
+            /// Create new generator using the given URL
+            /// - parameters:
+            ///   - generator: The method used to retrieve the URL
+            ///   - update: The method used to update the requets parameters and headers
             public static func url(_ generate: @escaping (URL?, Int) -> URL,
                                    update: ((_ parameters: inout [URLQueryItem]?,
                                               _ headers: inout [String: String]?,
                                               _ repeatCount: Int) -> Void)? = nil) -> RequestGenerator {
                 return .init(.url(generate, update))
             }
+            /// Create new generator using the given URL
+            /// - parameters:
+            ///   - generator: The method used to retrieve the URL
+            ///   - update: The method used to update the requets parameters and headers
             public static func url(_ generate: @escaping @autoclosure() -> URL,
                                    update: ((_ parameters: inout [URLQueryItem]?,
                                               _ headers: inout [String: String]?,
                                               _ repeatCount: Int) -> Void)? = nil) -> RequestGenerator {
                 return .init(.url({ _,_ in return generate() }, update))
             }
-            
-            func generate(previousRequest: URLRequest?, repeatCount: Int) -> URLRequest {
+            /// Generate a URLRequest
+            ///
+            /// - parameters:
+            ///   - previousRequest: The repvious request.  Used to copy additional request details
+            ///   - repeatCount: The repeat execution count.  Starting number is 0
+            /// - returns: Returns the newly created URLRequest based on provided details
+            public func generate(previousRequest: URLRequest? = nil, repeatCount: Int = 0) -> URLRequest {
                 var rtnRequest: URLRequest? = nil
                 switch self.choice {
                     case .request(let f, _): rtnRequest = f(previousRequest, repeatCount)
