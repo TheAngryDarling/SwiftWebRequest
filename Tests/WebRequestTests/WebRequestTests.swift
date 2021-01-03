@@ -7,6 +7,18 @@ import Dispatch
     #endif
 #endif
 
+
+#if !swift(>=4.2)
+extension Array {
+    func firstIndex(where predicate: (Element) throws -> Bool) rethrows -> Index? {
+        for (index, element) in self.enumerated() {
+            if try predicate(element) { return index }
+        }
+        return nil
+    }
+}
+#endif
+
 final class WebRequestTests: XCTestCase {
     func testSingleRequest() {
         let sig = DispatchSemaphore(value: 0)
@@ -184,6 +196,86 @@ final class WebRequestTests: XCTestCase {
         sig.wait()
         
         
+    }
+    
+    func testRepeatRequestUpdateURL() {
+        func repeatHandler(_ request: WebRequest.RepeatedRequest<Void>,
+                           _ results: WebRequest.SingleRequest.Results,
+                           _ repeatCount: Int) -> WebRequest.RepeatedRequest<Void>.RepeatResults {
+            
+            print("[\(repeatCount)] - \(results.originalURL!) - Finished")
+            if repeatCount < 5 { return WebRequest.RepeatedRequest<Void>.RepeatResults.repeat }
+            else { return WebRequest.RepeatedRequest<Void>.RepeatResults.results(nil) }
+            //return (repeat: rep, results: results)
+        }
+        func updateRequestDetails(_ parameters: inout [URLQueryItem]?,
+                                  _ headers: inout [String: String]?,
+                                  _ repeatCount: Int) {
+            var params = parameters ?? []
+            if let idx = params.firstIndex(where: { return $0.name == "start" }) {
+                params.remove(at: idx)
+            }
+            params.append(URLQueryItem(name: "start", value: "\(repeatCount * 10)"))
+            parameters = params
+            
+        }
+        let session = URLSession(configuration: URLSessionConfiguration.default)
+        let req = URL(string: "https://www.google.com/search?q=Swift")!
+        let sig = DispatchSemaphore(value: 0)
+        let r = WebRequest.RepeatedRequest<Void>(req,
+                                                 updateRequestDetails: updateRequestDetails,
+                                                 usingSession: session,
+                                                 repeatHandler: repeatHandler) { rs, r, e in
+            
+            
+            print("All Done!")
+            
+             sig.signal()
+        }
+        
+        r.resume()
+        sig.wait()
+    }
+    
+    func testRepeatRequestUpdateURLCancelled() {
+        func repeatHandler(_ request: WebRequest.RepeatedRequest<Void>,
+                           _ results: WebRequest.SingleRequest.Results,
+                           _ repeatCount: Int) -> WebRequest.RepeatedRequest<Void>.RepeatResults {
+            
+            print("[\(repeatCount)] - \(results.originalURL!) - Finished")
+            if repeatCount == 3 { request.cancel() }
+            if repeatCount < 5 { return WebRequest.RepeatedRequest<Void>.RepeatResults.repeat }
+            else { return WebRequest.RepeatedRequest<Void>.RepeatResults.results(nil) }
+            //return (repeat: rep, results: results)
+        }
+        func updateRequestDetails(_ parameters: inout [URLQueryItem]?,
+                                  _ headers: inout [String: String]?,
+                                  _ repeatCount: Int) {
+            var params = parameters ?? []
+            if let idx = params.firstIndex(where: { return $0.name == "start" }) {
+                params.remove(at: idx)
+            }
+            params.append(URLQueryItem(name: "start", value: "\(repeatCount * 10)"))
+            parameters = params
+            
+        }
+        
+        let session = URLSession(configuration: URLSessionConfiguration.default)
+        let req = URL(string: "https://www.google.com/search?q=Swift")!
+        let sig = DispatchSemaphore(value: 0)
+        let r = WebRequest.RepeatedRequest<Void>(req,
+                                                 updateRequestDetails: updateRequestDetails,
+                                                 usingSession: session,
+                                                 repeatHandler: repeatHandler) { rs, r, e in
+            
+            
+            print("All Done!")
+            
+             sig.signal()
+        }
+        
+        r.resume()
+        sig.wait()
     }
     
     
@@ -1029,6 +1121,8 @@ final class WebRequestTests: XCTestCase {
         ("testMultiRequestEventOnCompleted", testMultiRequestEventOnCompleted),
         ("testMultiRequestEventOnCompletedWithMaxConcurrentCount", testMultiRequestEventOnCompletedWithMaxConcurrentCount),
         ("testRepeatRequest", testRepeatRequest),
-        ("testRepeatRequestCancelled", testRepeatRequestCancelled)
+        ("testRepeatRequestCancelled", testRepeatRequestCancelled),
+        ("testRepeatRequestUpdateURL", testRepeatRequestUpdateURL),
+        ("testRepeatRequestUpdateURLCancelled", testRepeatRequestUpdateURLCancelled)
     ]
 }

@@ -41,6 +41,90 @@ public extension WebRequest {
             }
         }
         
+        public struct RequestGenerator {
+            private enum Choice {
+                case request((URLRequest?, Int) -> URLRequest,
+                              ((inout [URLQueryItem]?,
+                                inout [String: String]?,
+                                Int) -> Void)?)
+                case url((URL?, Int) -> URL,
+                          ((inout [URLQueryItem]?,
+                           inout [String: String]?,
+                           Int) -> Void)?)
+                
+                fileprivate var updateFields: ((inout [URLQueryItem]?,
+                                                inout [String: String]?,
+                                                Int) -> Void)? {
+                    switch self {
+                        case .request(_, let f), .url(_, let f): return f
+                    }
+                }
+            }
+            
+            private let choice: Choice
+            private init(_ choice: Choice) { self.choice = choice }
+            
+            
+            public static func request(_ generate: @escaping (URLRequest?, Int) -> URLRequest,
+                                   update: ((_ parameters: inout [URLQueryItem]?,
+                                              _ headers: inout [String: String]?,
+                                              _ repeatCount: Int) -> Void)? = nil) -> RequestGenerator {
+                return .init(.request(generate, update))
+            }
+            public static func request(_ generate: @escaping @autoclosure() -> URLRequest,
+                                   update: ((_ parameters: inout [URLQueryItem]?,
+                                              _ headers: inout [String: String]?,
+                                              _ repeatCount: Int) -> Void)? = nil) -> RequestGenerator {
+                return .init(.request({ _,_ in return generate() }, update))
+            }
+            
+            public static func url(_ generate: @escaping (URL?, Int) -> URL,
+                                   update: ((_ parameters: inout [URLQueryItem]?,
+                                              _ headers: inout [String: String]?,
+                                              _ repeatCount: Int) -> Void)? = nil) -> RequestGenerator {
+                return .init(.url(generate, update))
+            }
+            public static func url(_ generate: @escaping @autoclosure() -> URL,
+                                   update: ((_ parameters: inout [URLQueryItem]?,
+                                              _ headers: inout [String: String]?,
+                                              _ repeatCount: Int) -> Void)? = nil) -> RequestGenerator {
+                return .init(.url({ _,_ in return generate() }, update))
+            }
+            
+            func generate(previousRequest: URLRequest?, repeatCount: Int) -> URLRequest {
+                var rtnRequest: URLRequest? = nil
+                switch self.choice {
+                    case .request(let f, _): rtnRequest = f(previousRequest, repeatCount)
+                    case .url(let f, _):
+                        let url = f(previousRequest?.url, repeatCount)
+                        if let pr = previousRequest {
+                            rtnRequest = URLRequest(url: url, pr)
+                        } else {
+                            rtnRequest = URLRequest(url: url)
+                        }
+                }
+                
+                precondition(rtnRequest != nil, "Failed to generate new URLRequest")
+                precondition(rtnRequest!.url != nil, "URLRequest missing URL")
+                
+                if let f = self.choice.updateFields {
+                    var components = URLComponents(url: rtnRequest!.url!,
+                                                   resolvingAgainstBaseURL: false)!
+                    var params = components.queryItems
+                    var headers = rtnRequest?.allHTTPHeaderFields
+                    
+                    f(&params, &headers, repeatCount)
+                    
+                    components.queryItems = params
+                    rtnRequest!.url = components.url!
+                    rtnRequest!.allHTTPHeaderFields = headers
+                }
+                
+                
+                return rtnRequest!
+            }
+        }
+        
         private var _state: State = .suspended
         public override var state: State { return self._state }
         
@@ -60,9 +144,7 @@ public extension WebRequest {
         public override var progress: Progress { return self._progress }
         #endif
         
-        
-        
-        private let request: () -> URLRequest
+        private let requestGenerator: RequestGenerator
         private let session: () -> URLSession
         
         private var completionHandler: ((SingleRequest.Results, T?, Swift.Error?) -> Void)? = nil
@@ -79,57 +161,94 @@ public extension WebRequest {
         /// The original request object passed when the request was created.
         public let originalRequest: URLRequest
      
-        /// Create a new WebRequest using the provided request and session.
-        public init(_ request: @escaping @autoclosure () -> URLRequest,
+        /// Create a new WebRequest using the provided request generator and session.
+        public init(requestGenerator: RequestGenerator,
                     usingSession session: @escaping @autoclosure () -> URLSession,
                     repeatInterval: TimeInterval = RepeatedRequestConstants.DEFAULT_REPEAT_INTERVAL,
-                    repeatHandler: @escaping (RepeatedRequest<T>, SingleRequest.Results, Int) throws -> RepeatResults) {
+                    repeatHandler: @escaping (RepeatedRequest<T>, SingleRequest.Results, Int) throws -> RepeatResults,
+                    completionHandler: ((SingleRequest.Results, T?, Swift.Error?) -> Void)? = nil) {
             self.repeatInterval = repeatInterval
-            //var workingRequest = request
-            // Ensures that we get a real data instaed of cached data
-            //workingRequest.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
-            self.request = request
+            self.requestGenerator = requestGenerator
             self.session = session
             self.repeatHandler = repeatHandler
+            self.completionHandler = completionHandler
             
-            self.originalRequest = request()
-            self.currentRequest = originalRequest
+            self.originalRequest = requestGenerator.generate(previousRequest: nil, repeatCount: 0)
+            self.currentRequest = self.originalRequest
             
             #if _runtime(_ObjC)
             self._progress = Progress(totalUnitCount: 0)
             #endif
             
-            
             super.init()
+        }
+        
+        /// Create a new WebRequest using the provided request and session.
+        public convenience init(_ request: @escaping @autoclosure () -> URLRequest,
+                                updateRequestDetails: ((_ parameters: inout [URLQueryItem]?,
+                                                        _ headers: inout [String: String]?,
+                                                        _ repeatCount: Int) -> Void)? = nil,
+                                usingSession session: @escaping @autoclosure () -> URLSession,
+                                repeatInterval: TimeInterval = RepeatedRequestConstants.DEFAULT_REPEAT_INTERVAL,
+                                repeatHandler: @escaping (RepeatedRequest<T>, SingleRequest.Results, Int) throws -> RepeatResults,
+                                completionHandler: ((SingleRequest.Results, T?, Swift.Error?) -> Void)? = nil) {
             
+            self.init(requestGenerator: .request(request, update: updateRequestDetails),
+                      usingSession: session,
+                      repeatInterval: repeatInterval,
+                      repeatHandler: repeatHandler,
+                      completionHandler: completionHandler)
+        }
+        
+        /// Create a new WebRequest using the provided request and session.
+        public convenience init(_ request: @escaping (_ previousRequest: URLRequest?,
+                                                      _ repeatCount: Int) -> URLRequest,
+                                updateRequestDetails: ((_ parameters: inout [URLQueryItem]?,
+                                                        _ headers: inout [String: String]?,
+                                                        _ repeatCount: Int) -> Void)? = nil,
+                                usingSession session: @escaping @autoclosure () -> URLSession,
+                                repeatInterval: TimeInterval = RepeatedRequestConstants.DEFAULT_REPEAT_INTERVAL,
+                                repeatHandler: @escaping (RepeatedRequest<T>, SingleRequest.Results, Int) throws -> RepeatResults,
+                                completionHandler: ((SingleRequest.Results, T?, Swift.Error?) -> Void)? = nil) {
             
+            self.init(requestGenerator: .request(request, update: updateRequestDetails),
+                      usingSession: session,
+                      repeatInterval: repeatInterval,
+                      repeatHandler: repeatHandler,
+                      completionHandler: completionHandler)
         }
         
         // Create a new WebRequest using the provided url and session
         public convenience init(_ url: @escaping @autoclosure () -> URL,
-                                usingSession session: @escaping @autoclosure () -> URLSession,
-                                repeatInterval: TimeInterval = RepeatedRequestConstants.DEFAULT_REPEAT_INTERVAL,
-                                repeatHandler: @escaping (RepeatedRequest<T>, SingleRequest.Results, Int) throws -> RepeatResults ) {
-            self.init(URLRequest(url: url()), usingSession: session, repeatInterval: repeatInterval, repeatHandler: repeatHandler)
-        }
-        
-        // Create a new WebRequest using the provided requset and session. and call the completionHandler when finished
-        public convenience init(_ request: @escaping @autoclosure () -> URLRequest,
+                                updateRequestDetails: ((_ parameters: inout [URLQueryItem]?,
+                                                        _ headers: inout [String: String]?,
+                                                        _ repeatCount: Int) -> Void)? = nil,
                                 usingSession session: @escaping @autoclosure () -> URLSession,
                                 repeatInterval: TimeInterval = RepeatedRequestConstants.DEFAULT_REPEAT_INTERVAL,
                                 repeatHandler: @escaping (RepeatedRequest<T>, SingleRequest.Results, Int) throws -> RepeatResults,
-                                completionHandler: @escaping (SingleRequest.Results, T?, Swift.Error?) -> Void) {
-            self.init(request, usingSession: session, repeatInterval: repeatInterval, repeatHandler: repeatHandler)
-            self.completionHandler = completionHandler
+                                completionHandler: ((SingleRequest.Results, T?, Swift.Error?) -> Void)? = nil) {
+            self.init(requestGenerator: .url(url, update: updateRequestDetails),
+                      usingSession: session,
+                      repeatInterval: repeatInterval,
+                      repeatHandler: repeatHandler,
+                      completionHandler: completionHandler)
         }
         
-        // Create a new WebRequest using the provided url and session. and call the completionHandler when finished
-        public convenience init(_ url: @escaping @autoclosure () -> URL,
+        // Create a new WebRequest using the provided url and session
+        public convenience init(_ url: @escaping (_ previousURL: URL?,
+                                                  _ repeatCount: Int) -> URL,
+                                updateRequestDetails: ((_ parameters: inout [URLQueryItem]?,
+                                                        _ headers: inout [String: String]?,
+                                                        _ repeatCount: Int) -> Void)? = nil,
                                 usingSession session: @escaping @autoclosure () -> URLSession,
                                 repeatInterval: TimeInterval = RepeatedRequestConstants.DEFAULT_REPEAT_INTERVAL,
                                 repeatHandler: @escaping (RepeatedRequest<T>, SingleRequest.Results, Int) throws -> RepeatResults,
-                                completionHandler: @escaping (SingleRequest.Results, T?, Swift.Error?) -> Void) {
-            self.init(URLRequest(url: url()), usingSession: session, repeatInterval: repeatInterval, repeatHandler: repeatHandler, completionHandler: completionHandler)
+                                completionHandler: ((SingleRequest.Results, T?, Swift.Error?) -> Void)? = nil) {
+            self.init(requestGenerator: .url(url, update: updateRequestDetails),
+                      usingSession: session,
+                      repeatInterval: repeatInterval,
+                      repeatHandler: repeatHandler,
+                      completionHandler: completionHandler)
         }
         
         
@@ -137,8 +256,14 @@ public extension WebRequest {
            self.cancelRequest()
         }
         
-        private func createRequest(isFirstRequest: Bool = false) {
-            let req: URLRequest = isFirstRequest ? self.originalRequest : self.request()
+        private func createRequest(repeatCount: Int) {
+            
+            let req: URLRequest =  {
+                guard repeatCount > 0 else { return self.originalRequest }
+                return self.requestGenerator.generate(previousRequest: self.currentRequest,
+                                                      repeatCount: self.repeatCount)
+            }()
+            
             self.currentRequest = req
             let wR = SingleRequest(req, usingSession: self.session()) { requestResults in
                 self.webRequest = nil
@@ -175,7 +300,7 @@ public extension WebRequest {
                         guard s.state == .running else { return }
                         
                         s.repeatCount += 1
-                        s.createRequest()
+                        s.createRequest(repeatCount: s.repeatCount)
                     }
                 } else {
                     self._state = .completed
@@ -216,7 +341,7 @@ public extension WebRequest {
             if let r = self.webRequest { r.resume() }
             else {
                 // Must create sub request
-                self.createRequest(isFirstRequest: true)
+                self.createRequest(repeatCount: 0)
             }
             
            
@@ -238,20 +363,20 @@ public extension WebRequest {
         public override func cancel() {
             guard self._state != .canceling && self._state != .completed else { return }
             
-            let hasRequest: Bool = (self.webRequest != nil)
-            //Cancel all outstanding requests
-            self.cancelRequest()
-            //Ensures we call the super so proper events get signaled
-            super.cancel()
-            self._state = .canceling
-            if !hasRequest {
-                
+            if (self.webRequest == nil) {
                 let results = SingleRequest.Results(request: self.currentRequest, response: nil, error: SingleRequest.createCancelationError(forURL: self.currentRequest.url!), data: nil)
                 if let f = self.completionHandler {
                     self.callAsyncEventHandler { f(results, nil, results.error) }
                 }
                 
             }
+            
+            //Cancel all outstanding requests
+            self.cancelRequest()
+            //Ensures we call the super so proper events get signaled
+            super.cancel()
+            self._state = .canceling
+            
         }
         
         private func cancelRequest() {
