@@ -20,6 +20,132 @@ public extension WebRequest {
         public static let DEFAULT_REPEAT_INTERVAL: TimeInterval = 5
     }
     
+    struct RequestGenerator {
+        private enum Choice {
+            case request((URLRequest?, Int) -> URLRequest,
+                          ((inout [URLQueryItem]?,
+                            inout [String: String]?,
+                            Int) -> Void)?)
+            case url((URL?, Int) -> URL,
+                      ((inout [URLQueryItem]?,
+                       inout [String: String]?,
+                       Int) -> Void)?)
+            
+            fileprivate var updateFields: ((inout [URLQueryItem]?,
+                                            inout [String: String]?,
+                                            Int) -> Void)? {
+                switch self {
+                    case .request(_, let f), .url(_, let f): return f
+                }
+            }
+        }
+        
+        private let choice: Choice
+        private init(_ choice: Choice) { self.choice = choice }
+        
+        
+        /// Create new generator using the given URLRequest
+        /// - parameters:
+        ///   - generator: The method used to retrieve the URLRequest
+        ///   - update: The method used to update the requets parameters and headers
+        public static func request(_ generate: @escaping (URLRequest?, Int) -> URLRequest,
+                               update: ((_ parameters: inout [URLQueryItem]?,
+                                          _ headers: inout [String: String]?,
+                                          _ repeatCount: Int) -> Void)? = nil) -> RequestGenerator {
+            return .init(.request(generate, update))
+        }
+        /// Create new generator using the given URLRequest
+        /// - parameters:
+        ///   - generator: The method used to retrieve the URLRequest
+        ///   - update: The method used to update the requets parameters and headers
+        public static func request(_ generate: @escaping @autoclosure() -> URLRequest,
+                               update: ((_ parameters: inout [URLQueryItem]?,
+                                          _ headers: inout [String: String]?,
+                                          _ repeatCount: Int) -> Void)? = nil) -> RequestGenerator {
+            return .init(.request({ _,_ in return generate() }, update))
+        }
+        /// Create new generator using the given URLRequest
+        /// - parameters:
+        ///   - value: The URLRequest to use
+        ///   - update: The method used to update the requets parameters and headers
+        public static func request(value: URLRequest,
+                               update: ((_ parameters: inout [URLQueryItem]?,
+                                          _ headers: inout [String: String]?,
+                                          _ repeatCount: Int) -> Void)? = nil) -> RequestGenerator {
+            return .init(.request({ _,_ in return value }, update))
+        }
+        
+        /// Create new generator using the given URL
+        /// - parameters:
+        ///   - generator: The method used to retrieve the URL
+        ///   - update: The method used to update the requets parameters and headers
+        public static func url(_ generate: @escaping (URL?, Int) -> URL,
+                               update: ((_ parameters: inout [URLQueryItem]?,
+                                          _ headers: inout [String: String]?,
+                                          _ repeatCount: Int) -> Void)? = nil) -> RequestGenerator {
+            return .init(.url(generate, update))
+        }
+        /// Create new generator using the given URL
+        /// - parameters:
+        ///   - generator: The method used to retrieve the URL
+        ///   - update: The method used to update the requets parameters and headers
+        public static func url(_ generate: @escaping @autoclosure() -> URL,
+                               update: ((_ parameters: inout [URLQueryItem]?,
+                                          _ headers: inout [String: String]?,
+                                          _ repeatCount: Int) -> Void)? = nil) -> RequestGenerator {
+            return .init(.url({ _,_ in return generate() }, update))
+        }
+        /// Create new generator using the given URL
+        /// - parameters:
+        ///   - value: The URL to use
+        ///   - update: The method used to update the requets parameters and headers
+        public static func url(value: URL,
+                               update: ((_ parameters: inout [URLQueryItem]?,
+                                          _ headers: inout [String: String]?,
+                                          _ repeatCount: Int) -> Void)? = nil) -> RequestGenerator {
+            return .init(.url({ _,_ in return value }, update))
+        }
+        
+        /// Generate a URLRequest
+        ///
+        /// - parameters:
+        ///   - previousRequest: The repvious request.  Used to copy additional request details
+        ///   - repeatCount: The repeat execution count.  Starting number is 0
+        /// - returns: Returns the newly created URLRequest based on provided details
+        public func generate(previousRequest: URLRequest? = nil, repeatCount: Int = 0) -> URLRequest {
+            var rtnRequest: URLRequest? = nil
+            switch self.choice {
+                case .request(let f, _): rtnRequest = f(previousRequest, repeatCount)
+                case .url(let f, _):
+                    let url = f(previousRequest?.url, repeatCount)
+                    if let pr = previousRequest {
+                        rtnRequest = URLRequest(url: url, pr)
+                    } else {
+                        rtnRequest = URLRequest(url: url)
+                    }
+            }
+            
+            precondition(rtnRequest != nil, "Failed to generate new URLRequest")
+            precondition(rtnRequest!.url != nil, "URLRequest missing URL")
+            
+            if let f = self.choice.updateFields {
+                var components = URLComponents(url: rtnRequest!.url!,
+                                               resolvingAgainstBaseURL: false)!
+                var params = components.queryItems
+                var headers = rtnRequest?.allHTTPHeaderFields
+                
+                f(&params, &headers, repeatCount)
+                
+                components.queryItems = params
+                rtnRequest!.url = components.url!
+                rtnRequest!.allHTTPHeaderFields = headers
+            }
+            
+            
+            return rtnRequest!
+        }
+    }
+    
     /// RepeatedRequest allows for excuting the same request repeatidly until a certain condition.
     /// Its good for when polling a server for some sort of state change like running a task and waiting for it to complete
     class RepeatedRequest<T>: WebRequest {
@@ -38,111 +164,6 @@ public extension WebRequest {
             fileprivate var finishedResults: T? {
                 guard case let RepeatResults.results(r) = self else { return nil }
                 return r
-            }
-        }
-        
-        public struct RequestGenerator {
-            private enum Choice {
-                case request((URLRequest?, Int) -> URLRequest,
-                              ((inout [URLQueryItem]?,
-                                inout [String: String]?,
-                                Int) -> Void)?)
-                case url((URL?, Int) -> URL,
-                          ((inout [URLQueryItem]?,
-                           inout [String: String]?,
-                           Int) -> Void)?)
-                
-                fileprivate var updateFields: ((inout [URLQueryItem]?,
-                                                inout [String: String]?,
-                                                Int) -> Void)? {
-                    switch self {
-                        case .request(_, let f), .url(_, let f): return f
-                    }
-                }
-            }
-            
-            private let choice: Choice
-            private init(_ choice: Choice) { self.choice = choice }
-            
-            
-            /// Create new generator using the given URLRequest
-            /// - parameters:
-            ///   - generator: The method used to retrieve the URLRequest
-            ///   - update: The method used to update the requets parameters and headers
-            public static func request(_ generate: @escaping (URLRequest?, Int) -> URLRequest,
-                                   update: ((_ parameters: inout [URLQueryItem]?,
-                                              _ headers: inout [String: String]?,
-                                              _ repeatCount: Int) -> Void)? = nil) -> RequestGenerator {
-                return .init(.request(generate, update))
-            }
-            /// Create new generator using the given URLRequest
-            /// - parameters:
-            ///   - generator: The method used to retrieve the URLRequest
-            ///   - update: The method used to update the requets parameters and headers
-            public static func request(_ generate: @escaping @autoclosure() -> URLRequest,
-                                   update: ((_ parameters: inout [URLQueryItem]?,
-                                              _ headers: inout [String: String]?,
-                                              _ repeatCount: Int) -> Void)? = nil) -> RequestGenerator {
-                return .init(.request({ _,_ in return generate() }, update))
-            }
-            
-            /// Create new generator using the given URL
-            /// - parameters:
-            ///   - generator: The method used to retrieve the URL
-            ///   - update: The method used to update the requets parameters and headers
-            public static func url(_ generate: @escaping (URL?, Int) -> URL,
-                                   update: ((_ parameters: inout [URLQueryItem]?,
-                                              _ headers: inout [String: String]?,
-                                              _ repeatCount: Int) -> Void)? = nil) -> RequestGenerator {
-                return .init(.url(generate, update))
-            }
-            /// Create new generator using the given URL
-            /// - parameters:
-            ///   - generator: The method used to retrieve the URL
-            ///   - update: The method used to update the requets parameters and headers
-            public static func url(_ generate: @escaping @autoclosure() -> URL,
-                                   update: ((_ parameters: inout [URLQueryItem]?,
-                                              _ headers: inout [String: String]?,
-                                              _ repeatCount: Int) -> Void)? = nil) -> RequestGenerator {
-                return .init(.url({ _,_ in return generate() }, update))
-            }
-            /// Generate a URLRequest
-            ///
-            /// - parameters:
-            ///   - previousRequest: The repvious request.  Used to copy additional request details
-            ///   - repeatCount: The repeat execution count.  Starting number is 0
-            /// - returns: Returns the newly created URLRequest based on provided details
-            public func generate(previousRequest: URLRequest? = nil, repeatCount: Int = 0) -> URLRequest {
-                var rtnRequest: URLRequest? = nil
-                switch self.choice {
-                    case .request(let f, _): rtnRequest = f(previousRequest, repeatCount)
-                    case .url(let f, _):
-                        let url = f(previousRequest?.url, repeatCount)
-                        if let pr = previousRequest {
-                            rtnRequest = URLRequest(url: url, pr)
-                        } else {
-                            rtnRequest = URLRequest(url: url)
-                        }
-                }
-                
-                precondition(rtnRequest != nil, "Failed to generate new URLRequest")
-                precondition(rtnRequest!.url != nil, "URLRequest missing URL")
-                
-                if let f = self.choice.updateFields {
-                    var components = URLComponents(url: rtnRequest!.url!,
-                                                   resolvingAgainstBaseURL: false)!
-                    var params = components.queryItems
-                    var headers = rtnRequest?.allHTTPHeaderFields
-                    
-                    f(&params, &headers, repeatCount)
-                    
-                    components.queryItems = params
-                    rtnRequest!.url = components.url!
-                    rtnRequest!.allHTTPHeaderFields = headers
-                }
-                
-                
-                return rtnRequest!
             }
         }
         
