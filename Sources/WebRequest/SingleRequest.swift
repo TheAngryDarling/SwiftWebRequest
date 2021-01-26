@@ -456,7 +456,8 @@ public extension WebRequest {
         /// - Parameters:
         ///   - url: The url to request
         ///   - session: The URL Session to execute the request on
-        public convenience init(_ url: @autoclosure () -> URL, usingSession session: @autoclosure () -> URLSession) {
+        public convenience init(_ url: @autoclosure () -> URL,
+                                usingSession session: @autoclosure () -> URLSession) {
             self.init(URLRequest(url: url()), usingSession: session)
         }
         
