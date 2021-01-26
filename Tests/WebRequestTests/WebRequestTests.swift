@@ -23,7 +23,7 @@ final class WebRequestTests: XCTestCase {
     func testSingleRequest() {
         let sig = DispatchSemaphore(value: 0)
         let session = URLSession(configuration: URLSessionConfiguration.default)
-        let request = WebRequest.SingleRequest(URL(string: "https://www.google.ca/search?q=Swift")!, usingSession: session) { r in
+        let request = WebRequest.DataRequest(URL(string: "https://www.google.ca/search?q=Swift")!, usingSession: session) { r in
             if let s = r.responseString() { print(s) }
             else { print("nil") }
             
@@ -56,7 +56,7 @@ final class WebRequestTests: XCTestCase {
         let request = WebRequest.GroupRequest(requests, usingSession: session, maxConcurrentRequests: 5) { rA in
             print("Finished grouped request")
             for (i, r) in rA.enumerated() {
-                guard let request = r as? WebRequest.SingleRequest else { continue }
+                guard let request = r as? WebRequest.DataRequest else { continue }
                 var responseLine: String = "[\(i)] \(request.originalRequest!.url!): \(request.state) "
                 if let r = request.response as? HTTPURLResponse { responseLine += " - \(r.statusCode)" }
                 else if let e = request.results.error { responseLine += " - \(type(of: e)): \(e)" }
@@ -69,11 +69,11 @@ final class WebRequestTests: XCTestCase {
             print("Starting grouped request")
         }
         request.singleRequestStarted = {gR, i, r in
-            guard let request = r as? WebRequest.SingleRequest else { return }
+            guard let request = r as? WebRequest.DataRequest else { return }
             print("Staring [\(i)] \(request.originalRequest!.url!)")
         }
         request.singleRequestCompleted = {gR, i, r in
-            guard let request = r as? WebRequest.SingleRequest else { return }
+            guard let request = r as? WebRequest.DataRequest else { return }
             let responseSize = request.results.data?.count ?? 0
             let responseCode = (request.response as? HTTPURLResponse)?.statusCode ?? 0
             print("Finished [\(i)] \(request.originalRequest!.url!) - \(responseCode) - \(request.state) - Size: \(responseSize)")
@@ -95,7 +95,7 @@ final class WebRequestTests: XCTestCase {
         let sig = DispatchSemaphore(value: 0)
         let request =  WebRequest.GroupRequest(requests, usingSession: session, maxConcurrentRequests: 5)
         request.singleRequestCompleted = {gR, i, r in
-            guard let request = r as? WebRequest.SingleRequest else { return }
+            guard let request = r as? WebRequest.DataRequest else { return }
             print("[\(i)] \(request.originalRequest!.url!) - \((request.response as! HTTPURLResponse).statusCode)")
             let preClearData = (request.results.data != nil) ? "\(request.results.data!)" : "nil"
             print("[\(i)] \(request.originalRequest!.url!) - \(preClearData)")
@@ -123,11 +123,11 @@ final class WebRequestTests: XCTestCase {
         let sig = DispatchSemaphore(value: 0)
         let request =  WebRequest.GroupRequest(requests, usingSession: session, maxConcurrentRequests: 1)
         request.singleRequestStarted = {gR, i, r in
-             guard let request = r as? WebRequest.SingleRequest else { return }
+             guard let request = r as? WebRequest.DataRequest else { return }
              print("[\(i)] \(request.originalRequest!.url!) - Started")
         }
         request.singleRequestCompleted = {gR, i, r in
-            guard let request = r as? WebRequest.SingleRequest else { return }
+            guard let request = r as? WebRequest.DataRequest else { return }
             print("[\(i)] \(request.originalRequest!.url!) - \((request.response as! HTTPURLResponse).statusCode)")
             let preClearData = (request.results.data != nil) ? "\(request.results.data!)" : "nil"
             print("[\(i)] \(request.originalRequest!.url!) - \(preClearData)")
@@ -147,7 +147,7 @@ final class WebRequestTests: XCTestCase {
     func testRepeatRequest() {
         
         func repeatHandler(_ request: WebRequest.RepeatedRequest<Void>,
-                           _ results: WebRequest.SingleRequest.Results,
+                           _ results: WebRequest.DataRequest.Results,
                            _ repeatCount: Int) -> WebRequest.RepeatedRequest<Void>.RepeatResults {
             
             print("[\(repeatCount)] - \(results.originalURL!) - Finished")
@@ -174,7 +174,7 @@ final class WebRequestTests: XCTestCase {
     
     
     func testRepeatRequestCancelled() {
-        func repeatHandler(_ request: WebRequest.RepeatedRequest<Void>, _ results: WebRequest.SingleRequest.Results, _ repeatCount: Int) -> WebRequest.RepeatedRequest<Void>.RepeatResults {
+        func repeatHandler(_ request: WebRequest.RepeatedRequest<Void>, _ results: WebRequest.DataRequest.Results, _ repeatCount: Int) -> WebRequest.RepeatedRequest<Void>.RepeatResults {
             
             print("[\(repeatCount)] - \(results.originalURL!) - Finished")
             if repeatCount == 3 { request.cancel() }
@@ -200,7 +200,7 @@ final class WebRequestTests: XCTestCase {
     
     func testRepeatRequestUpdateURL() {
         func repeatHandler(_ request: WebRequest.RepeatedRequest<Void>,
-                           _ results: WebRequest.SingleRequest.Results,
+                           _ results: WebRequest.DataRequest.Results,
                            _ repeatCount: Int) -> WebRequest.RepeatedRequest<Void>.RepeatResults {
             
             print("[\(repeatCount)] - \(results.originalURL!) - Finished")
@@ -239,7 +239,7 @@ final class WebRequestTests: XCTestCase {
     
     func testRepeatRequestUpdateURLCancelled() {
         func repeatHandler(_ request: WebRequest.RepeatedRequest<Void>,
-                           _ results: WebRequest.SingleRequest.Results,
+                           _ results: WebRequest.DataRequest.Results,
                            _ repeatCount: Int) -> WebRequest.RepeatedRequest<Void>.RepeatResults {
             
             print("[\(repeatCount)] - \(results.originalURL!) - Finished")
