@@ -190,7 +190,8 @@ public extension WebRequest {
                                 usingSession session: @autoclosure () -> URLSession,
                                 maxConcurrentRequests: Int? = nil,
                                 queueName: String? = nil) {
-            let webRequests = requests().map( { SingleRequest($0, usingSession: session) })
+            let webRequests = requests().map( { DataRequest($0,
+                                                            usingSession: session) })
             self.init(webRequests,
                       maxConcurrentRequests: maxConcurrentRequests,
                       queueName: queueName)
@@ -228,7 +229,8 @@ public extension WebRequest {
                                 queueName: String? = nil,
                                 completionHandler: @escaping ([WebRequest]) -> Void) {
             
-            let webRequests = requests().map( { SingleRequest($0, usingSession: session) })
+            let webRequests = requests().map( { DataRequest($0,
+                                                            usingSession: session) })
             self.init(webRequests,
                       maxConcurrentRequests: maxConcurrentRequests,
                       queueName: queueName,
@@ -268,7 +270,8 @@ public extension WebRequest {
                                 maxConcurrentRequests: Int? = nil,
                                 queueName: String? = nil) {
             
-            let webRequests = urls().map( { SingleRequest(URLRequest(url: $0), usingSession: session) })
+            let webRequests = urls().map( { DataRequest(URLRequest(url: $0),
+                                                        usingSession: session) })
             self.init(webRequests,
                       maxConcurrentRequests: maxConcurrentRequests,
                       queueName: queueName)
@@ -306,7 +309,8 @@ public extension WebRequest {
                                 queueName: String? = nil,
                                 completionHandler: @escaping ([WebRequest]) -> Void) {
             
-            let webRequests = urls().map( { SingleRequest(URLRequest(url: $0), usingSession: session) })
+            let webRequests = urls().map( { DataRequest(URLRequest(url: $0),
+                                                        usingSession: session) })
             self.init(webRequests,
                       maxConcurrentRequests: maxConcurrentRequests,
                       queueName: queueName,
