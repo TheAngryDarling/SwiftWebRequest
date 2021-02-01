@@ -1,5 +1,6 @@
 import XCTest
 import Dispatch
+import Swifter
 @testable import WebRequest
 #if swift(>=4.1)
     #if canImport(FoundationXML)
@@ -19,15 +20,132 @@ extension Array {
 }
 #endif
 
+extension URL {
+    func appendingQueryItem(_ name: String, withValue value: String) -> URL {
+        var components = URLComponents(url: self, resolvingAgainstBaseURL: true)!
+        if components.queryItems == nil { components.queryItems = [] }
+        if let idx = components.queryItems?.firstIndex(where: { return $0.name == name }) {
+            components.queryItems?.remove(at: idx)
+            components.queryItems?.insert(URLQueryItem(name: name, value: value), at: idx)
+        } else {
+            components.queryItems?.append(URLQueryItem(name: name, value: value))
+        }
+        return components.url!
+    }
+    func appendingQueryItem(_ item: String) -> URL {
+        guard !item.contains("=") else {
+            let strComponents = item.split(separator: "=").map(String.init)
+            return self.appendingQueryItem(strComponents[0], withValue: strComponents[1])
+        }
+        var components = URLComponents(url: self, resolvingAgainstBaseURL: true)!
+        if components.queryItems == nil { components.queryItems = [] }
+        if let idx = components.queryItems?.firstIndex(where: { return $0.name == item }) {
+            components.queryItems?.remove(at: idx)
+            components.queryItems?.insert(URLQueryItem(name: item, value: nil), at: idx)
+        } else {
+            components.queryItems?.append(URLQueryItem(name: item, value: nil))
+        }
+        return components.url!
+    }
+}
+
 final class WebRequestTests: XCTestCase {
+    static var testServerPort: Int = 0
+    
+    static let testServerHost: String = "127.0.0.1"
+    static var testURLBase: URL { return URL(string: "http://\(testServerHost):\(testServerPort)")! }
+    static var testURLSearch: URL { return URL(string: "/search", relativeTo: testURLBase)! }
+    
+    static var uploadedData: [String: Data] = [:]
+    static var server: HttpServer?
+    
+    var testURLBase: URL { return WebRequestTests.testURLBase }
+    var testURLSearch: URL { return WebRequestTests.testURLSearch }
+    
+    
+    
+    
+    
+    override class func setUp() {
+        super.setUp()
+        
+        WebRequestTests.server = HttpServer()
+        WebRequestTests.server?["/search"] = { request -> HttpResponse in
+            let initialValue = "Query"
+            var rtn: String = initialValue
+            if let param = request.queryParams.first(where: { $0.0 == "q" }) {
+                if rtn == initialValue { rtn += "?" }
+                else { rtn += "&"}
+                
+                rtn += "q=" + param.1
+            }
+            if let param = request.queryParams.first(where: { $0.0 == "start" }) {
+                if rtn == initialValue { rtn += "?" }
+                else { rtn += "&"}
+                
+                rtn += "start=" + param.1
+            }
+            //print("[\(request.path)] Responding to request with '\(rtn)'")
+            return .ok(.text(rtn))
+        }
+        
+        let webRequestTestFolder = NSString(string: "\(#file)").deletingLastPathComponent
+        print("Sharing folder '\(webRequestTestFolder)' at '/testfiles'")
+        WebRequestTests.server?.get["/testfiles/:path"] = shareFilesFromDirectory(webRequestTestFolder)
+        WebRequestTests.server?.post["/upload"] = { request -> HttpResponse in
+            let multiParts = request.parseMultiPartFormData()
+            if multiParts.count > 0 {
+                for multipart in request.parseMultiPartFormData() {
+                    uploadedData[multipart.name ?? ""] = Data(multipart.body)
+                }
+            } else {
+                uploadedData[""] = Data(request.body)
+            }
+            return .ok(.html(""))
+        }
+        
+        WebRequestTests.server?.listenAddressIPv4 = "127.0.0.1"
+        try!  WebRequestTests.server?.start(in_port_t(WebRequestTests.testServerPort),
+                                            forceIPv4: true)
+        
+        /// We re-assign the test server port because if it was originally 0 then a randomly selected available port will be used
+        WebRequestTests.testServerPort = (try! WebRequestTests.server!.port())
+        print("Running on port \(WebRequestTests.testServerPort)")
+        
+        print("Server started")
+    }
+    override class func tearDown() {
+        print("Stopping server")
+        WebRequestTests.server?.stop()
+        super.tearDown()
+    }
+    
+    
+    
+    override func setUp() {
+        func sigHandler(_ signal: Int32) -> Void {
+            print("A fatal error has occured")
+            #if swift(>=4.1) || _runtime(_ObjC)
+            Thread.callStackSymbols.forEach { print($0) }
+            #endif
+            fflush(stdout)
+            exit(1)
+        }
+        signal(4, sigHandler)
+    }
     func testSingleRequest() {
         let sig = DispatchSemaphore(value: 0)
         let session = URLSession(configuration: URLSessionConfiguration.default)
-        let request = WebRequest.DataRequest(URL(string: "https://www.google.ca/search?q=Swift")!, usingSession: session) { r in
-            if let s = r.responseString() { print(s) }
-            else { print("nil") }
+        let testURL = testURLSearch.appendingQueryItem("q=Swift")
+        let request = WebRequest.DataRequest(testURL, usingSession: session) { r in
+            XCTAssertNil(r.error, "Expected no Error but found '\(r.error as Any)'")
+            guard let s = r.responseString() else {
+                XCTFail("Unable to convert resposne into string: \(r.data as Any)")
+                sig.signal()
+                return
+            }
+            XCTAssertEqual(s, "Query?q=Swift", "Expected response to match")
             
-            print(r.error as Any)
             sig.signal()
         }
         request.resume()
@@ -47,19 +165,34 @@ final class WebRequestTests: XCTestCase {
         let session = URLSession(configuration: URLSessionConfiguration.default)
         var requests: [URL] = []
         for i in 0..<5 {
-            var url = "https://www.google.ca/search?q=Swift"
-            if i > 0 { url += "&start=\((i * 10))" }
-            requests.append(URL(string: url)!)
+            var url: URL = testURLSearch.appendingQueryItem("q=Swift")
+            if i > 0 {
+                url = url.appendingQueryItem("start=\(i * 10)")
+            }
+            requests.append(url)
         }
         let sig = DispatchSemaphore(value: 0)
         
-        let request = WebRequest.GroupRequest(requests, usingSession: session, maxConcurrentRequests: 5) { rA in
+        let request = WebRequest.GroupRequest(requests,
+                                              usingSession: session,
+                                              maxConcurrentRequests: 5) { rA in
             print("Finished grouped request")
             for (i, r) in rA.enumerated() {
-                guard let request = r as? WebRequest.DataRequest else { continue }
-                var responseLine: String = "[\(i)] \(request.originalRequest!.url!): \(request.state) "
+                guard let request = r as? WebRequest.DataRequest else {
+                    XCTFail("[\(i)] Expected 'WebRequest.DataRequest' but found '\(type(of: r))'")
+                    continue
+                }
+                var responseLine: String = "[\(i)] \(request.originalRequest!.url!.absoluteString): \(request.state) "
                 if let r = request.response as? HTTPURLResponse { responseLine += " - \(r.statusCode)" }
                 else if let e = request.results.error { responseLine += " - \(type(of: e)): \(e)" }
+                guard let responseString = request.results.responseString() else {
+                    XCTFail("[\(i)]: Unable to convert response into string: \(request.results.data as Any)")
+                    continue
+                }
+                var testCase: String = "Query?q=Swift"
+                if i > 0 { testCase += "&start=\(i * 10)" }
+                XCTAssertEqual(responseString, testCase, "[\(i)]: Expected response to match")
+                
                 print(responseLine)
                 fflush(stdout)
             }
@@ -68,15 +201,15 @@ final class WebRequestTests: XCTestCase {
         request.requestStarted = { r in
             print("Starting grouped request")
         }
-        request.singleRequestStarted = {gR, i, r in
+        request.singleRequestStarted = { gR, i, r in
             guard let request = r as? WebRequest.DataRequest else { return }
-            print("Staring [\(i)] \(request.originalRequest!.url!)")
+            print("Staring [\(i)] \(request.originalRequest!.url!.absoluteString)")
         }
-        request.singleRequestCompleted = {gR, i, r in
+        request.singleRequestCompleted = { gR, i, r in
             guard let request = r as? WebRequest.DataRequest else { return }
             let responseSize = request.results.data?.count ?? 0
             let responseCode = (request.response as? HTTPURLResponse)?.statusCode ?? 0
-            print("Finished [\(i)] \(request.originalRequest!.url!) - \(responseCode) - \(request.state) - Size: \(responseSize)")
+            print("Finished [\(i)] \(request.originalRequest!.url!.absoluteString) - \(responseCode) - \(request.state) - Size: \(responseSize)")
         }
         request.resume()
         //request.cancel()
@@ -88,20 +221,32 @@ final class WebRequestTests: XCTestCase {
         let session = URLSession(configuration: URLSessionConfiguration.default)
         var requests: [URL] = []
         for i in 0..<5 {
-            var url = "https://www.google.ca/search?q=Swift"
-            if i > 0 { url += "&start=\((i * 10))" }
-            requests.append(URL(string: url)!)
+            var url: URL = testURLSearch.appendingQueryItem("q=Swift")
+            if i > 0 {
+                url = url.appendingQueryItem("start=\(i * 10)")
+            }
+            requests.append(url)
         }
         let sig = DispatchSemaphore(value: 0)
         let request =  WebRequest.GroupRequest(requests, usingSession: session, maxConcurrentRequests: 5)
         request.singleRequestCompleted = {gR, i, r in
             guard let request = r as? WebRequest.DataRequest else { return }
-            print("[\(i)] \(request.originalRequest!.url!) - \((request.response as! HTTPURLResponse).statusCode)")
+            
+            guard let responseString = request.results.responseString() else {
+                XCTFail("[\(i)]: Unable to convert resposne into string: \(request.results.data as Any)")
+                return
+            }
+            var testCase: String = "Query?q=Swift"
+            if i > 0 { testCase += "&start=\(i * 10)" }
+            XCTAssertEqual(responseString, testCase, "[\(i)]: Expected response to match")
+            
+            print("[\(i)] \(request.originalRequest!.url!.absoluteString) - \((request.response as! HTTPURLResponse).statusCode)")
             let preClearData = (request.results.data != nil) ? "\(request.results.data!)" : "nil"
-            print("[\(i)] \(request.originalRequest!.url!) - \(preClearData)")
+            print("[\(i)] \(request.originalRequest!.url!.absoluteString) - \(preClearData)")
             request.emptyResultsData()
             let postClearData = (request.results.data != nil) ? "\(request.results.data!)" : "nil"
-            print("[\(i)] \(request.originalRequest!.url!) - \(postClearData)")
+            print("[\(i)] \(request.originalRequest!.url!.absoluteString) - \(postClearData)")
+            
             fflush(stdout)
         }
         request.requestCompleted = { _ in
@@ -116,24 +261,37 @@ final class WebRequestTests: XCTestCase {
         let session = URLSession(configuration: URLSessionConfiguration.default)
         var requests: [URL] = []
         for i in 0..<5 {
-            var url = "https://www.google.ca/search?q=Swift"
-            if i > 0 { url += "&start=\((i * 10))" }
-            requests.append(URL(string: url)!)
+            var url: URL = testURLSearch.appendingQueryItem("q=Swift")
+            if i > 0 {
+                url = url.appendingQueryItem("start=\(i * 10)")
+            }
+            requests.append(url)
         }
         let sig = DispatchSemaphore(value: 0)
-        let request =  WebRequest.GroupRequest(requests, usingSession: session, maxConcurrentRequests: 1)
+        let request =  WebRequest.GroupRequest(requests,
+                                               usingSession: session,
+                                               maxConcurrentRequests: 1)
         request.singleRequestStarted = {gR, i, r in
              guard let request = r as? WebRequest.DataRequest else { return }
-             print("[\(i)] \(request.originalRequest!.url!) - Started")
+             print("[\(i)] \(request.originalRequest!.url!.absoluteString) - Started")
         }
         request.singleRequestCompleted = {gR, i, r in
             guard let request = r as? WebRequest.DataRequest else { return }
-            print("[\(i)] \(request.originalRequest!.url!) - \((request.response as! HTTPURLResponse).statusCode)")
+            
+            guard let responseString = request.results.responseString() else {
+                XCTFail("[\(i)]: Unable to convert resposne into string: \(request.results.data as Any)")
+                return
+            }
+            var testCase: String = "Query?q=Swift"
+            if i > 0 { testCase += "&start=\(i * 10)" }
+            XCTAssertEqual(responseString, testCase, "[\(i)]: Expected response to match")
+            
+            print("[\(i)] \(request.originalRequest!.url!.absoluteString) - \((request.response as! HTTPURLResponse).statusCode)")
             let preClearData = (request.results.data != nil) ? "\(request.results.data!)" : "nil"
-            print("[\(i)] \(request.originalRequest!.url!) - \(preClearData)")
+            print("[\(i)] \(request.originalRequest!.url!.absoluteString) - \(preClearData)")
             request.emptyResultsData()
             let postClearData = (request.results.data != nil) ? "\(request.results.data!)" : "nil"
-            print("[\(i)] \(request.originalRequest!.url!) - \(postClearData)")
+            print("[\(i)] \(request.originalRequest!.url!.absoluteString) - \(postClearData)")
             fflush(stdout)
         }
         request.requestCompleted = { _ in
@@ -146,19 +304,26 @@ final class WebRequestTests: XCTestCase {
     
     func testRepeatRequest() {
         
-        func repeatHandler(_ request: WebRequest.RepeatedRequest<Void>,
+        func repeatHandler(_ request: WebRequest.RepeatedDataRequest<Void>,
                            _ results: WebRequest.DataRequest.Results,
-                           _ repeatCount: Int) -> WebRequest.RepeatedRequest<Void>.RepeatResults {
+                           _ repeatCount: Int) -> WebRequest.RepeatedDataRequest<Void>.RepeatResults {
             
-            print("[\(repeatCount)] - \(results.originalURL!) - Finished")
-            if repeatCount < 5 { return WebRequest.RepeatedRequest<Void>.RepeatResults.repeat }
-            else { return WebRequest.RepeatedRequest<Void>.RepeatResults.results(nil) }
+            if let responseString = results.responseString() {
+                XCTAssertEqual(responseString, "Query", "[\(repeatCount)]: Expected response to match")
+            } else {
+                XCTFail("[\(repeatCount)]: Unable to convert resposne into string: \(results.data as Any)")
+            }
+           
+            
+            print("[\(repeatCount)] - \(results.originalURL!.absoluteString) - Finished")
+            if repeatCount < 5 { return WebRequest.RepeatedDataRequest<Void>.RepeatResults.repeat }
+            else { return WebRequest.RepeatedDataRequest<Void>.RepeatResults.results(nil) }
             //return (repeat: rep, results: results)
         }
         let session = URLSession(configuration: URLSessionConfiguration.default)
-        let req = URL(string: "https://www.google.com")!
+        let req = testURLSearch
         let sig = DispatchSemaphore(value: 0)
-        let r = WebRequest.RepeatedRequest<Void>(req, usingSession: session, repeatHandler: repeatHandler) { rs, r, e in
+        let r = WebRequest.RepeatedDataRequest<Void>(req, usingSession: session, repeatHandler: repeatHandler) { rs, r, e in
             
             
             print("All Done!")
@@ -174,18 +339,28 @@ final class WebRequestTests: XCTestCase {
     
     
     func testRepeatRequestCancelled() {
-        func repeatHandler(_ request: WebRequest.RepeatedRequest<Void>, _ results: WebRequest.DataRequest.Results, _ repeatCount: Int) -> WebRequest.RepeatedRequest<Void>.RepeatResults {
+        func repeatHandler(_ request: WebRequest.RepeatedDataRequest<Void>,
+                           _ results: WebRequest.DataRequest.Results,
+                           _ repeatCount: Int) -> WebRequest.RepeatedDataRequest<Void>.RepeatResults {
             
-            print("[\(repeatCount)] - \(results.originalURL!) - Finished")
+            if let responseString = results.responseString() {
+                XCTAssertEqual(responseString, "Query", "[\(repeatCount)]: Expected response to match")
+            } else {
+                XCTFail("[\(repeatCount)]: Unable to convert resposne into string: \(results.data as Any)")
+            }
+            
+            print("[\(repeatCount)] - \(results.originalURL!.absoluteString) - Finished")
             if repeatCount == 3 { request.cancel() }
-            if repeatCount < 5 { return WebRequest.RepeatedRequest<Void>.RepeatResults.repeat }
-            else { return WebRequest.RepeatedRequest<Void>.RepeatResults.results(nil) }
+            if repeatCount < 5 { return WebRequest.RepeatedDataRequest<Void>.RepeatResults.repeat }
+            else { return WebRequest.RepeatedDataRequest<Void>.RepeatResults.results(nil) }
             //return (repeat: rep, results: results)
         }
         let session = URLSession(configuration: URLSessionConfiguration.default)
-        let req = URL(string: "https://www.google.com")!
+        let req = testURLSearch
         let sig = DispatchSemaphore(value: 0)
-        let r = WebRequest.RepeatedRequest<Void>(req, usingSession: session, repeatHandler: repeatHandler) { rs, r, e in
+        let r = WebRequest.RepeatedDataRequest<Void>(req,
+                                                     usingSession: session,
+                                                     repeatHandler: repeatHandler) { rs, r, e in
             
             print("All Done!")
             
@@ -194,18 +369,26 @@ final class WebRequestTests: XCTestCase {
         }
         r.resume()
         sig.wait()
-        
-        
     }
     
     func testRepeatRequestUpdateURL() {
-        func repeatHandler(_ request: WebRequest.RepeatedRequest<Void>,
+        func repeatHandler(_ request: WebRequest.RepeatedDataRequest<Void>,
                            _ results: WebRequest.DataRequest.Results,
-                           _ repeatCount: Int) -> WebRequest.RepeatedRequest<Void>.RepeatResults {
+                           _ repeatCount: Int) -> WebRequest.RepeatedDataRequest<Void>.RepeatResults {
+            if let responseString = results.responseString() {
+                var testCase = "Query"
+                if repeatCount > 0 {
+                    testCase += "?start=\(repeatCount * 10)"
+                }
+                XCTAssertEqual(responseString, testCase, "[\(repeatCount)]: Expected response to match")
+            } else {
+                
+                XCTFail("[\(repeatCount)]: Unable to convert resposne into string: \(results.data as Any) - error: \(results.error as Any)")
+            }
             
-            print("[\(repeatCount)] - \(results.originalURL!) - Finished")
-            if repeatCount < 5 { return WebRequest.RepeatedRequest<Void>.RepeatResults.repeat }
-            else { return WebRequest.RepeatedRequest<Void>.RepeatResults.results(nil) }
+            print("[\(repeatCount)] - \(results.originalURL!.absoluteString) - Finished")
+            if repeatCount < 5 { return WebRequest.RepeatedDataRequest<Void>.RepeatResults.repeat }
+            else { return WebRequest.RepeatedDataRequest<Void>.RepeatResults.results(nil) }
             //return (repeat: rep, results: results)
         }
         func updateRequestDetails(_ parameters: inout [URLQueryItem]?,
@@ -215,14 +398,18 @@ final class WebRequestTests: XCTestCase {
             if let idx = params.firstIndex(where: { return $0.name == "start" }) {
                 params.remove(at: idx)
             }
-            params.append(URLQueryItem(name: "start", value: "\(repeatCount * 10)"))
-            parameters = params
+            if repeatCount > 0 {
+                params.append(URLQueryItem(name: "start", value: "\(repeatCount * 10)"))
+            }
+            if params.count > 0 {
+                parameters = params
+            }
             
         }
         let session = URLSession(configuration: URLSessionConfiguration.default)
-        let req = URL(string: "https://www.google.com/search?q=Swift")!
+        let req = testURLSearch
         let sig = DispatchSemaphore(value: 0)
-        let r = WebRequest.RepeatedRequest<Void>(req,
+        let r = WebRequest.RepeatedDataRequest<Void>(req,
                                                  updateRequestDetails: updateRequestDetails,
                                                  usingSession: session,
                                                  repeatHandler: repeatHandler) { rs, r, e in
@@ -238,14 +425,25 @@ final class WebRequestTests: XCTestCase {
     }
     
     func testRepeatRequestUpdateURLCancelled() {
-        func repeatHandler(_ request: WebRequest.RepeatedRequest<Void>,
+        func repeatHandler(_ request: WebRequest.RepeatedDataRequest<Void>,
                            _ results: WebRequest.DataRequest.Results,
-                           _ repeatCount: Int) -> WebRequest.RepeatedRequest<Void>.RepeatResults {
+                           _ repeatCount: Int) -> WebRequest.RepeatedDataRequest<Void>.RepeatResults {
             
-            print("[\(repeatCount)] - \(results.originalURL!) - Finished")
+            if let responseString = results.responseString() {
+                
+                var testCase = "Query"
+                if repeatCount > 0 {
+                    testCase += "?start=\(repeatCount * 10)"
+                }
+                XCTAssertEqual(responseString, testCase, "[\(repeatCount)]: Expected response to match")
+            } else {
+                XCTFail("[\(repeatCount)]: Unable to convert resposne into string: \(results.data as Any)")
+            }
+            
+            print("[\(repeatCount)] - \(results.originalURL!.absoluteString) - Finished")
             if repeatCount == 3 { request.cancel() }
-            if repeatCount < 5 { return WebRequest.RepeatedRequest<Void>.RepeatResults.repeat }
-            else { return WebRequest.RepeatedRequest<Void>.RepeatResults.results(nil) }
+            if repeatCount < 5 { return WebRequest.RepeatedDataRequest<Void>.RepeatResults.repeat }
+            else { return WebRequest.RepeatedDataRequest<Void>.RepeatResults.results(nil) }
             //return (repeat: rep, results: results)
         }
         func updateRequestDetails(_ parameters: inout [URLQueryItem]?,
@@ -255,15 +453,19 @@ final class WebRequestTests: XCTestCase {
             if let idx = params.firstIndex(where: { return $0.name == "start" }) {
                 params.remove(at: idx)
             }
-            params.append(URLQueryItem(name: "start", value: "\(repeatCount * 10)"))
-            parameters = params
+            if repeatCount > 0 {
+                params.append(URLQueryItem(name: "start", value: "\(repeatCount * 10)"))
+            }
+            if params.count > 0 {
+                parameters = params
+            }
             
         }
         
         let session = URLSession(configuration: URLSessionConfiguration.default)
-        let req = URL(string: "https://www.google.com/search?q=Swift")!
+        let req = testURLSearch
         let sig = DispatchSemaphore(value: 0)
-        let r = WebRequest.RepeatedRequest<Void>(req,
+        let r = WebRequest.RepeatedDataRequest<Void>(req,
                                                  updateRequestDetails: updateRequestDetails,
                                                  usingSession: session,
                                                  repeatHandler: repeatHandler) { rs, r, e in
@@ -275,6 +477,87 @@ final class WebRequestTests: XCTestCase {
         }
         
         r.resume()
+        sig.wait()
+    }
+    
+    func testDownloadFile() {
+        
+        
+        let filePath = "\(#file)"
+        let fileName = NSString(string: filePath).lastPathComponent
+        
+        let downloadFileURL = testURLBase
+            .appendingPathComponent("/testfiles")
+            .appendingPathComponent(fileName)
+        //let downloadFileURL = URL(string: "https://github.com/TheAngryDarling/SwiftWebRequest/archive/1.0.0.zip")!
+        
+        
+        let sig = DispatchSemaphore(value: 0)
+        let session = URLSession(configuration: URLSessionConfiguration.default)
+        print("Trying to download '\(downloadFileURL.absoluteString)'")
+        
+        let request = WebRequest.DownloadRequest(downloadFileURL, usingSession: session) { r in
+            XCTAssertNil(r.error, "Expected no Error but found '\(r.error as Any)'")
+            guard let downloadLocation = r.location else {
+                XCTFail("No download file")
+                sig.signal()
+                return
+            }
+            
+            print("Download Location: '\(downloadLocation.absoluteString)'")
+            
+            let originalData = try! Data(contentsOf: URL(fileURLWithPath: filePath))
+            let downloadData = try! Data(contentsOf: downloadLocation)
+            
+            XCTAssertEqual(originalData, downloadData, "Download file does not match orignal file")
+            
+            try? FileManager.default.removeItem(at: downloadLocation)
+            
+            sig.signal()
+        }
+        
+        request.resume()
+        //request.cancel()
+        request.waitUntilComplete()
+        sig.wait()
+        
+        
+    }
+    
+    func testUploadFile() {
+        let filePath = "\(#file)"
+        let fileURL = URL(fileURLWithPath: filePath)
+        let uploadURL = testURLBase
+            .appendingPathComponent("/upload")
+        
+        let sig = DispatchSemaphore(value: 0)
+        let session = URLSession(configuration: URLSessionConfiguration.default)
+        let request = WebRequest.UploadRequest(uploadURL,
+                                               fromFile: fileURL,
+                                               usingSession: session) { r in
+            XCTAssertNil(r.error, "Expected no Error but found '\(r.error as Any)'")
+            
+            
+            
+            let originalData = try! Data(contentsOf: fileURL)
+            let fileName = fileURL.lastPathComponent
+            guard let uploadedData = WebRequestTests.uploadedData[fileName] ?? WebRequestTests.uploadedData[""] else {
+                XCTFail("Unable to find uploaded data for '\(fileName)'")
+                print("Current upload count: \( WebRequestTests.uploadedData.count)")
+                for up in WebRequestTests.uploadedData.keys {
+                    print(up)
+                }
+                sig.signal()
+                return
+            }
+            
+            XCTAssertEqual(originalData, uploadedData, "Download file does not match orignal file")
+            
+            sig.signal()
+        }
+        request.resume()
+        //request.cancel()
+        request.waitUntilComplete()
         sig.wait()
     }
     
@@ -1123,6 +1406,8 @@ final class WebRequestTests: XCTestCase {
         ("testRepeatRequest", testRepeatRequest),
         ("testRepeatRequestCancelled", testRepeatRequestCancelled),
         ("testRepeatRequestUpdateURL", testRepeatRequestUpdateURL),
-        ("testRepeatRequestUpdateURLCancelled", testRepeatRequestUpdateURLCancelled)
+        ("testRepeatRequestUpdateURLCancelled", testRepeatRequestUpdateURLCancelled),
+        ("testDownloadFile", testDownloadFile),
+        ("testUploadFile", testUploadFile)
     ]
 }
