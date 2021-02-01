@@ -15,10 +15,13 @@ import Dispatch
 
 public extension WebRequest {
     
-    struct RepeatedRequestConstants {
+    struct RepeatedDataRequestConstants {
         /// Default interval between repeated requests
         public static let DEFAULT_REPEAT_INTERVAL: TimeInterval = 5
     }
+    
+    @available(*, deprecated, renamed: "RepeatedDataRequestConstants")
+    typealias RepeatedRequestConstants = RepeatedDataRequestConstants
     
     struct RequestGenerator {
         private enum Choice {
@@ -130,7 +133,7 @@ public extension WebRequest {
             
             if let f = self.choice.updateFields {
                 var components = URLComponents(url: rtnRequest!.url!,
-                                               resolvingAgainstBaseURL: false)!
+                                               resolvingAgainstBaseURL: true)!
                 var params = components.queryItems
                 var headers = rtnRequest?.allHTTPHeaderFields
                 
@@ -146,9 +149,11 @@ public extension WebRequest {
         }
     }
     
+    @available(*, deprecated, renamed: "RepeatedDataRequest")
+    typealias RepeatedRequest<T> = RepeatedDataRequest<T>
     /// RepeatedRequest allows for excuting the same request repeatidly until a certain condition.
     /// Its good for when polling a server for some sort of state change like running a task and waiting for it to complete
-    class RepeatedRequest<T>: WebRequest {
+    class RepeatedDataRequest<T>: WebRequest {
         
         public enum RepeatResults {
             /// Indicator that the RepeatedRequest should continue
@@ -173,7 +178,7 @@ public extension WebRequest {
         private let repeatInterval: TimeInterval
         private var repeatCount: Int = 0
         
-        private var webRequest: SingleRequest? = nil
+        private var webRequest: DataRequest? = nil
         //private let request: URLRequest
         //private let session: URLSession
         
@@ -189,13 +194,13 @@ public extension WebRequest {
         private let requestGenerator: RequestGenerator
         private let session: () -> URLSession
         
-        private var completionHandler: ((SingleRequest.Results, T?, Swift.Error?) -> Void)? = nil
+        private var completionHandler: ((DataRequest.Results, T?, Swift.Error?) -> Void)? = nil
         private let completionHandlerLockingQueue: DispatchQueue = DispatchQueue(label: "org.webrequest.WebRequest.CompletionHandler.Locking")
         private var hasCalledCompletionHandler: Bool = false
         
         /// Repeat handler is the event handler that gets called to indicate if the class should repeat or not.
         /// It allwos for results to be passed from here to the completion handler so they do not need to be parsed twice.
-        private var repeatHandler: ((RepeatedRequest<T>, SingleRequest.Results, Int) throws -> RepeatResults)? = nil
+        private var repeatHandler: ((RepeatedDataRequest<T>, DataRequest.Results, Int) throws -> RepeatResults)? = nil
         
         
         /// The URL request object currently being handled by the request.
@@ -206,9 +211,9 @@ public extension WebRequest {
         /// Create a new WebRequest using the provided request generator and session.
         public init(requestGenerator: RequestGenerator,
                     usingSession session: @escaping @autoclosure () -> URLSession,
-                    repeatInterval: TimeInterval = RepeatedRequestConstants.DEFAULT_REPEAT_INTERVAL,
-                    repeatHandler: @escaping (RepeatedRequest<T>, SingleRequest.Results, Int) throws -> RepeatResults,
-                    completionHandler: ((SingleRequest.Results, T?, Swift.Error?) -> Void)? = nil) {
+                    repeatInterval: TimeInterval = RepeatedDataRequestConstants.DEFAULT_REPEAT_INTERVAL,
+                    repeatHandler: @escaping (RepeatedDataRequest<T>, DataRequest.Results, Int) throws -> RepeatResults,
+                    completionHandler: ((DataRequest.Results, T?, Swift.Error?) -> Void)? = nil) {
             self.repeatInterval = repeatInterval
             self.requestGenerator = requestGenerator
             self.session = session
@@ -231,12 +236,12 @@ public extension WebRequest {
                                                         _ headers: inout [String: String]?,
                                                         _ repeatCount: Int) -> Void)? = nil,
                                 usingSession session: @escaping @autoclosure () -> URLSession,
-                                repeatInterval: TimeInterval = RepeatedRequestConstants.DEFAULT_REPEAT_INTERVAL,
-                                repeatHandler: @escaping (RepeatedRequest<T>, SingleRequest.Results, Int) throws -> RepeatResults,
-                                completionHandler: ((SingleRequest.Results, T?, Swift.Error?) -> Void)? = nil) {
+                                repeatInterval: TimeInterval = RepeatedDataRequestConstants.DEFAULT_REPEAT_INTERVAL,
+                                repeatHandler: @escaping (RepeatedDataRequest<T>, DataRequest.Results, Int) throws -> RepeatResults,
+                                completionHandler: ((DataRequest.Results, T?, Swift.Error?) -> Void)? = nil) {
             
-            self.init(requestGenerator: .request(request, update: updateRequestDetails),
-                      usingSession: session,
+            self.init(requestGenerator: .request({ _, _ in return request() }, update: updateRequestDetails),
+                      usingSession: session(),
                       repeatInterval: repeatInterval,
                       repeatHandler: repeatHandler,
                       completionHandler: completionHandler)
@@ -249,12 +254,12 @@ public extension WebRequest {
                                                         _ headers: inout [String: String]?,
                                                         _ repeatCount: Int) -> Void)? = nil,
                                 usingSession session: @escaping @autoclosure () -> URLSession,
-                                repeatInterval: TimeInterval = RepeatedRequestConstants.DEFAULT_REPEAT_INTERVAL,
-                                repeatHandler: @escaping (RepeatedRequest<T>, SingleRequest.Results, Int) throws -> RepeatResults,
-                                completionHandler: ((SingleRequest.Results, T?, Swift.Error?) -> Void)? = nil) {
+                                repeatInterval: TimeInterval = RepeatedDataRequestConstants.DEFAULT_REPEAT_INTERVAL,
+                                repeatHandler: @escaping (RepeatedDataRequest<T>, DataRequest.Results, Int) throws -> RepeatResults,
+                                completionHandler: ((DataRequest.Results, T?, Swift.Error?) -> Void)? = nil) {
             
             self.init(requestGenerator: .request(request, update: updateRequestDetails),
-                      usingSession: session,
+                      usingSession: session(),
                       repeatInterval: repeatInterval,
                       repeatHandler: repeatHandler,
                       completionHandler: completionHandler)
@@ -266,11 +271,11 @@ public extension WebRequest {
                                                         _ headers: inout [String: String]?,
                                                         _ repeatCount: Int) -> Void)? = nil,
                                 usingSession session: @escaping @autoclosure () -> URLSession,
-                                repeatInterval: TimeInterval = RepeatedRequestConstants.DEFAULT_REPEAT_INTERVAL,
-                                repeatHandler: @escaping (RepeatedRequest<T>, SingleRequest.Results, Int) throws -> RepeatResults,
-                                completionHandler: ((SingleRequest.Results, T?, Swift.Error?) -> Void)? = nil) {
-            self.init(requestGenerator: .url(url, update: updateRequestDetails),
-                      usingSession: session,
+                                repeatInterval: TimeInterval = RepeatedDataRequestConstants.DEFAULT_REPEAT_INTERVAL,
+                                repeatHandler: @escaping (RepeatedDataRequest<T>, DataRequest.Results, Int) throws -> RepeatResults,
+                                completionHandler: ((DataRequest.Results, T?, Swift.Error?) -> Void)? = nil) {
+            self.init(requestGenerator: .url({ _, _ in return url() }, update: updateRequestDetails),
+                      usingSession: session(),
                       repeatInterval: repeatInterval,
                       repeatHandler: repeatHandler,
                       completionHandler: completionHandler)
@@ -283,11 +288,11 @@ public extension WebRequest {
                                                         _ headers: inout [String: String]?,
                                                         _ repeatCount: Int) -> Void)? = nil,
                                 usingSession session: @escaping @autoclosure () -> URLSession,
-                                repeatInterval: TimeInterval = RepeatedRequestConstants.DEFAULT_REPEAT_INTERVAL,
-                                repeatHandler: @escaping (RepeatedRequest<T>, SingleRequest.Results, Int) throws -> RepeatResults,
-                                completionHandler: ((SingleRequest.Results, T?, Swift.Error?) -> Void)? = nil) {
+                                repeatInterval: TimeInterval = RepeatedDataRequestConstants.DEFAULT_REPEAT_INTERVAL,
+                                repeatHandler: @escaping (RepeatedDataRequest<T>, DataRequest.Results, Int) throws -> RepeatResults,
+                                completionHandler: ((DataRequest.Results, T?, Swift.Error?) -> Void)? = nil) {
             self.init(requestGenerator: .url(url, update: updateRequestDetails),
-                      usingSession: session,
+                      usingSession: session(),
                       repeatInterval: repeatInterval,
                       repeatHandler: repeatHandler,
                       completionHandler: completionHandler)
@@ -307,7 +312,7 @@ public extension WebRequest {
             }()
             
             self.currentRequest = req
-            let wR = SingleRequest(req, usingSession: self.session()) { requestResults in
+            let wR = DataRequest(req, usingSession: self.session()) { requestResults in
                 self.webRequest = nil
                 
                 
@@ -351,7 +356,8 @@ public extension WebRequest {
                     self.triggerStateChange(.completed)
                     self.completionHandlerLockingQueue.sync { self.hasCalledCompletionHandler = true }
                     if let handler = self.completionHandler {
-                        self.callAsyncEventHandler { handler(requestResults, results, err) }
+                        /// was async
+                        self.callSyncEventHandler { handler(requestResults, results, err) }
                     }
                     
                 }
@@ -406,9 +412,12 @@ public extension WebRequest {
             guard self._state != .canceling && self._state != .completed else { return }
             
             if (self.webRequest == nil) {
-                let results = SingleRequest.Results(request: self.currentRequest, response: nil, error: SingleRequest.createCancelationError(forURL: self.currentRequest.url!), data: nil)
+                let results = DataRequest.Results(request: self.currentRequest,
+                                                  response: nil,
+                                                  error: DataRequest.createCancelationError(forURL: self.currentRequest.url!), data: nil)
                 if let f = self.completionHandler {
-                    self.callAsyncEventHandler { f(results, nil, results.error) }
+                    /// was async
+                    self.callSyncEventHandler { f(results, nil, results.error) }
                 }
                 
             }
