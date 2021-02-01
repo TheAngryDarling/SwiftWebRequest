@@ -4,15 +4,18 @@
 ![Linux](https://img.shields.io/badge/os-linux-green.svg?style=flat)
 ![Apache 2](https://img.shields.io/badge/license-Apache2-blue.svg?style=flat)
 
-Simple classes for creating single, multiple, and repeated web requests 
+Simple classes for creating single, multiple, and repeated data web requests as well as upload and download requests
 Each class provides event handlers for start, resume, suspend, cancel, complete
 Each class supports Notification events for start, resume, suspend, cancel, complete 
 
+Classes DataRequest, DownloadRequest, and UploadRequest provider access to delegate event handlers 
+
 ## Usage
-Single Web Request
+
+Data Web Request
 ```Swift
 let session = URLSession(configuration: URLSessionConfiguration.default)
-let request = WebRequest.SingleRequest(URL(string: "http://.....")!, usingSession: session) { r in 
+let request = WebRequest.DataRequest(URL(string: "http://.....")!, usingSession: session) { r in 
  // completion handler here
 }
 
@@ -98,7 +101,7 @@ request.resume() //Starts the request
 request.waitUntilComplete() //Lets wait until all requests have completed.  No guarentee that all event handlers have been called when we release
 ```
 
-Repeat Web Request
+Repeat Data Web Request
 ```Swift
 
 func repeatHandler(_ request: WebRequest.RepeatedRequest<Void>, _ results: WebRequest.SingleRequest.Results, _ repeatCount: Int) -> WebRequest.RepeatedRequest<Void>.RepeatResults {
@@ -138,6 +141,83 @@ request.resume() //Starts the request
 request.waitUntilComplete() //Lets wait until all requests have completed.  No guarentee that all event handlers have been called when we release
 ```
 
+Download Web Request
+
+Note: due to compatibility issues with OpenSwift < 4.1.4 session.downloadTask not working 
+A workaround is put in place by usingthe session.dataTask that mimics the process.
+```Swift
+let session = URLSession(configuration: URLSessionConfiguration.default)
+let request = WebRequest.DownloadRequest(URL(string: "http://.....")!, usingSession: session) { r in 
+ // completion handler here
+ guard let downloadLocation = r.location else {
+    ///error
+ }
+ /// process file
+ /// File may be deleted after event handler
+}
+
+//Setup secondary event handlers
+request.requestStarted = { r in 
+
+}
+request.requestResumed = { r in 
+
+}
+request.requestSuspended = { r in 
+
+}
+request.requestCancelled = { r in 
+
+}
+//This is an additional completion handler that gets called as well as the completionHandler in the constructor
+request.requestCompleted = { r in 
+
+}
+request.requestStateChanged = { r, s in 
+
+}
+request.resume() //Starts the request
+request.waitUntilComplete() //Lets wait until all requests have completed.  No guarentee that all event handlers have been called when we release
+```
+
+Upload Web Request
+```Swift
+let session = URLSession(configuration: URLSessionConfiguration.default)
+let uploadFile: URL = ...
+let request = WebRequest.UploadRequest(URL(string: "http://.....")!, 
+                                       fromFile: uploadFile, 
+                                       usingSession: session) { r in 
+ // completion handler here
+ 
+}
+
+//Setup secondary event handlers
+request.requestStarted = { r in 
+
+}
+request.requestResumed = { r in 
+
+}
+request.requestSuspended = { r in 
+
+}
+request.requestCancelled = { r in 
+
+}
+//This is an additional completion handler that gets called as well as the completionHandler in the constructor
+request.requestCompleted = { r in 
+
+}
+request.requestStateChanged = { r, s in 
+
+}
+request.resume() //Starts the request
+request.waitUntilComplete() //Lets wait until all requests have completed.  No guarentee that all event handlers have been called when we release
+```
+
+## Dependencies
+* [Swifter](https://github.com/httpswift/swifter) - Used in the **Test Cases** as a local server to test request cases and generate testable responses
+
 ## Author
 
 * **Tyler Anger** - *Initial work* - [TheAngryDarling](https://github.com/TheAngryDarling)
@@ -147,4 +227,5 @@ request.waitUntilComplete() //Lets wait until all requests have completed.  No g
 This project is licensed under Apache License v2.0 - see the [LICENSE.md](LICENSE.md) file for details
 
 ## Acknowledgments
+
 This package is based off the work done by Adam Sharp [here](https://gist.github.com/sharplet/37210c02aa9e525b55f823bb67712725)
