@@ -100,9 +100,11 @@ public extension WebRequest {
         ///   - requests: The individual requests to execute
         ///   - maxConcurrentRequests: The maximun number of requests to execute in parallel
         ///   - queueName: The queue name to use
+        ///   - completionHandler: The call back when done executing
         public init(_ requests: @autoclosure () -> [WebRequest],
                     maxConcurrentRequests: Int? = nil,
-                    queueName: String? = nil) {
+                    queueName: String? = nil,
+                    completionHandler: (([WebRequest]) -> Void)? = nil) {
             let reqs = requests()
             precondition(reqs.count > 0, "Must have atleast one request in array")
             
@@ -144,23 +146,13 @@ public extension WebRequest {
                     t.waitUntilComplete()
                 }
             }
+            if let ch = completionHandler {
+                self.completionHandler = ch
+            }
             
         }
         
-        /// Create new instance of a group request
-        ///
-        /// - Parameters:
-        ///   - requests: The individual requests to execute
-        ///   - maxConcurrentRequests: The maximun number of requests to execute in parallel
-        ///   - queueName: The queue name to use
-        ///   - completionHandler: The call back when done executing
-        public convenience init(_ requests: @autoclosure () -> [WebRequest],
-                                     maxConcurrentRequests: Int? = nil,
-                                     queueName: String? = nil,
-                                     completionHandler: @escaping ([WebRequest]) -> Void) {
-            self.init(requests, maxConcurrentRequests: maxConcurrentRequests, queueName: queueName)
-            self.completionHandler = completionHandler
-        }
+        
         
         /// Create new instance of a group request
         ///
@@ -172,47 +164,11 @@ public extension WebRequest {
         public convenience init(_ requests: WebRequest...,
                                 maxConcurrentRequests: Int? = nil,
                                 queueName: String? = nil,
-                                completionHandler: @escaping ([WebRequest]) -> Void) {
+                                completionHandler: (([WebRequest]) -> Void)? = nil) {
             self.init(requests,
                       maxConcurrentRequests: maxConcurrentRequests,
                       queueName: queueName,
                       completionHandler: completionHandler)
-        }
-        
-        /// Create new instance of a group request
-        ///
-        /// - Parameters:
-        ///   - requests: The individual requests to execute
-        ///   - session: The URL Session to use when executing the requests
-        ///   - maxConcurrentRequests: The maximun number of requests to execute in parallel
-        ///   - queueName: The queue name to use
-        public convenience init(_ requests: @autoclosure () -> [URLRequest],
-                                usingSession session: @autoclosure () -> URLSession,
-                                maxConcurrentRequests: Int? = nil,
-                                queueName: String? = nil) {
-            let webRequests = requests().map( { DataRequest($0,
-                                                            usingSession: session) })
-            self.init(webRequests,
-                      maxConcurrentRequests: maxConcurrentRequests,
-                      queueName: queueName)
-            
-        }
-        
-        /// Create new instance of a group request
-        ///
-        /// - Parameters:
-        ///   - requests: The individual requests to execute
-        ///   - session: The URL Session to use when executing the requests
-        ///   - maxConcurrentRequests: The maximun number of requests to execute in parallel
-        ///   - queueName: The queue name to use
-        public convenience init(_ requests: URLRequest...,
-                                usingSession session: @autoclosure () -> URLSession,
-                                maxConcurrentRequests: Int? = nil,
-                                queueName: String? = nil) {
-            self.init(requests,
-                      usingSession: session,
-                      maxConcurrentRequests: maxConcurrentRequests,
-                      queueName: queueName)
         }
         
         /// Create new instance of a group request
@@ -227,10 +183,9 @@ public extension WebRequest {
                                 usingSession session: @autoclosure () -> URLSession,
                                 maxConcurrentRequests: Int? = nil,
                                 queueName: String? = nil,
-                                completionHandler: @escaping ([WebRequest]) -> Void) {
-            
+                                completionHandler: (([WebRequest]) -> Void)? = nil) {
             let webRequests = requests().map( { DataRequest($0,
-                                                            usingSession: session) })
+                                                            usingSession: session()) })
             self.init(webRequests,
                       maxConcurrentRequests: maxConcurrentRequests,
                       queueName: queueName,
@@ -250,49 +205,12 @@ public extension WebRequest {
                                 usingSession session: @autoclosure () -> URLSession,
                                 maxConcurrentRequests: Int? = nil,
                                 queueName: String? = nil,
-                                completionHandler: @escaping ([WebRequest]) -> Void) {
+                                completionHandler: (([WebRequest]) -> Void)? = nil) {
             self.init(requests,
-                      usingSession: session,
+                      usingSession: session(),
                       maxConcurrentRequests: maxConcurrentRequests,
                       queueName: queueName,
                       completionHandler: completionHandler)
-        }
-        
-        /// Create new instance of a group request
-        ///
-        /// - Parameters:
-        ///   - urls: The individual urls to execute
-        ///   - session: The URL Session to use when executing the requests
-        ///   - maxConcurrentRequests: The maximun number of requests to execute in parallel
-        ///   - queueName: The queue name to use
-        public convenience init(_ urls: @autoclosure () -> [URL],
-                                usingSession session: @autoclosure () -> URLSession,
-                                maxConcurrentRequests: Int? = nil,
-                                queueName: String? = nil) {
-            
-            let webRequests = urls().map( { DataRequest(URLRequest(url: $0),
-                                                        usingSession: session) })
-            self.init(webRequests,
-                      maxConcurrentRequests: maxConcurrentRequests,
-                      queueName: queueName)
-            
-        }
-        
-        /// Create new instance of a group request
-        ///
-        /// - Parameters:
-        ///   - urls: The individual urls to execute
-        ///   - session: The URL Session to use when executing the requests
-        ///   - maxConcurrentRequests: The maximun number of requests to execute in parallel
-        ///   - queueName: The queue name to use
-        public convenience init(_ urls: URL...,
-                                usingSession session: @autoclosure () -> URLSession,
-                                maxConcurrentRequests: Int? = nil,
-                                queueName: String? = nil) {
-            self.init(urls,
-                      usingSession: session,
-                      maxConcurrentRequests: maxConcurrentRequests,
-                      queueName: queueName)
         }
         
         /// Create new instance of a group request
@@ -307,10 +225,10 @@ public extension WebRequest {
                                 usingSession session: @autoclosure () -> URLSession,
                                 maxConcurrentRequests: Int? = nil,
                                 queueName: String? = nil,
-                                completionHandler: @escaping ([WebRequest]) -> Void) {
+                                completionHandler: (([WebRequest]) -> Void)? = nil) {
             
             let webRequests = urls().map( { DataRequest(URLRequest(url: $0),
-                                                        usingSession: session) })
+                                                        usingSession: session()) })
             self.init(webRequests,
                       maxConcurrentRequests: maxConcurrentRequests,
                       queueName: queueName,
@@ -330,9 +248,9 @@ public extension WebRequest {
                                 usingSession session: @autoclosure () -> URLSession,
                                 maxConcurrentRequests: Int? = nil,
                                 queueName: String? = nil,
-                                completionHandler: @escaping ([WebRequest]) -> Void) {
+                                completionHandler: (([WebRequest]) -> Void)? = nil) {
             self.init(urls,
-                      usingSession: session,
+                      usingSession: session(),
                       maxConcurrentRequests: maxConcurrentRequests,
                       queueName: queueName,
                       completionHandler: completionHandler)
@@ -357,14 +275,19 @@ public extension WebRequest {
                         self.triggerStateChange(.completed)
                         
                         if let handler = self.completionHandler {
-                            self.callAsyncEventHandler { handler(self.requests) }
+                            /// was async
+                            self.callSyncEventHandler { handler(self.requests) }
                         }
                     }
                 }
             }
            
             guard let request = notification.object as? WebRequest else { return }
+            #if swift(>=5.0)
+            guard let idx = self.requests.firstIndex(of: request) else { return }
+            #else
             guard let idx = self.requests.index(of: request) else { return }
+            #endif
             
             let name = notification.name.rawValue + "Child"
             let newNot = Notification.Name(rawValue: name)
