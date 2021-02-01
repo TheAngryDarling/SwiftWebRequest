@@ -33,11 +33,11 @@ open class WebRequest: NSObject {
     #if _runtime(_ObjC)
     /// The progress of the request
     @available (macOS 10.13, iOS 11.0, tvOS 11.0, watchOS 4.0, *)
-    public var progress: Progress { fatalError("Not Impelemented") }
+    open var progress: Progress { fatalError("Not Impelemented") }
     #endif
     
     /// The error of the resposne
-    public var error: Swift.Error? { fatalError("Not Impelemented")  }
+    open var error: Swift.Error? { fatalError("Not Impelemented")  }
     
     /// Added eventHandlerQueue to ensure that events are triggered sequentially
     private let eventHandlerQueue: DispatchQueue = DispatchQueue(label: "org.webrequest.WebRequest.EventHandler.Queue")
@@ -146,15 +146,13 @@ open class WebRequest: NSObject {
     }
     
     internal func callSyncEventHandler(handler: @escaping () -> Void) {
-        eventHandlerQueue.sync {
-            #if _runtime(_ObjC) || swift(>=4.1)
-            let currentThreadName = Thread.current.name
-            defer { Thread.current.name = currentThreadName }
-            if Thread.current.name == nil || Thread.current.name == "" { Thread.current.name = "WebRequest.Events" }
-            #endif
-            
-            handler()
-        }
+        #if _runtime(_ObjC) || swift(>=4.1)
+        let currentThreadName = Thread.current.name
+        defer { Thread.current.name = currentThreadName }
+        if Thread.current.name == nil || Thread.current.name == "" { Thread.current.name = "WebRequest.Events" }
+        #endif
+        
+        handler()
     }
     
     /// Starts/resumes the task, if it is suspended.
@@ -182,6 +180,18 @@ open class WebRequest: NSObject {
             RunLoop.current.run(mode: .defaultRunLoopMode, before: (Date() + 0.5))
         }*/
         self.requestWorkingDispatchGroup.wait()
+    }
+    
+    internal static func createCancelationError(forURL url: URL) -> Error {
+        #if _runtime(_ObjC)
+        var uInfo: [String: Any] = [:]
+        uInfo[NSURLErrorFailingURLStringErrorKey] = "\(url)"
+        uInfo[NSURLErrorFailingURLErrorKey] = url
+        uInfo[NSLocalizedDescriptionKey] = "cancelled"
+        return  NSError(domain: "NSURLErrorDomain", code: NSURLErrorCancelled, userInfo: uInfo)
+        #else
+        return URLError(_nsError: NSError(domain: NSURLErrorDomain, code: NSURLErrorCancelled, userInfo: nil))
+        #endif
     }
 }
 
