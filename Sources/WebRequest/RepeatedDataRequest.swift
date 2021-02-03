@@ -414,7 +414,8 @@ public extension WebRequest {
             if (self.webRequest == nil) {
                 let results = DataRequest.Results(request: self.currentRequest,
                                                   response: nil,
-                                                  error: DataRequest.createCancelationError(forURL: self.currentRequest.url!), data: nil)
+                                                  error: DataRequest.createCancelationError(forURL: self.currentRequest.url!),
+                                                  data: nil)
                 if let f = self.completionHandler {
                     /// was async
                     self.callSyncEventHandler { f(results, nil, results.error) }
