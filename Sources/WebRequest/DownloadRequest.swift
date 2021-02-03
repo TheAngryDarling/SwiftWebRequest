@@ -14,68 +14,137 @@ import Foundation
 
 public extension WebRequest {
     /// Allows for a single download web request
-    class DownloadRequest: WebRequest {
+    class DownloadRequest: TaskedWebRequest<URL> {
         
-        
-        
-        /// Results container for request response
-        public struct Results {
-            public let request: URLRequest
-            public let response: URLResponse?
-            public let error: Error?
-            public private(set) var location: URL?
+        private class URLSessionDownloadTaskEventHandler: URLSessionTaskEventHandlerWithCompletionHandler<URL>,
+                                                          URLSessionDownloadDelegate {
+            public private(set) var didFinishDownloadingToHandler: [String: (URLSession, URLSessionTask, URL) -> Void] = [:]
             
-            /// The original url of the request
-            public var originalURL: URL? { return request.url }
-            /// The url from the response.   This could differ from the originalURL if there were redirects
-            public var currentURL: URL? {
-                if let r = response?.url { return r }
-                else { return originalURL }
+            /// Add event handler
+            @discardableResult
+            public func addDidFinishDownloadingToHandler(withId uid: String,
+                                                         _ handler: @escaping (URLSession, URLSessionTask, URL) -> Void) -> String {
+                precondition(!self.didFinishDownloadingToHandler.keys.contains(uid), "Id already in use")
+                self.didFinishDownloadingToHandler[uid] = handler
+                self.hasEventHandlers = true
+                return uid
+            }
+            /// Add event handler
+            @discardableResult
+            public func addDidFinishDownloadingToHandler(_ handler: @escaping (URLSession, URLSessionTask, URL) -> Void) -> String {
+                return self.addDidFinishDownloadingToHandler(withId: UUID().uuidString, handler)
+            }
+            /// Remove event handler with the given Id
+            public func removeDidFinishDownloadingToHandler(withId id: String) {
+                self.didFinishDownloadingToHandler.removeValue(forKey: id)
             }
             
-            internal var hasResponse: Bool {
-                return (self.response != nil || self.error != nil || self.location != nil)
+            func urlSession(_ session: URLSession,
+                            task: URLSessionTask,
+                            didFinishDownloadingTo location: URL) {
+                self.results = location
+                for (_, handler) in self.didFinishDownloadingToHandler {
+                    handler(session, task, location)
+                }
+            }
+            
+            func urlSession(_ session: URLSession,
+                            downloadTask: URLSessionDownloadTask,
+                            didFinishDownloadingTo location: URL) {
+                self.urlSession(session,
+                                task: downloadTask,
+                                didFinishDownloadingTo: location)
+            }
+            
+            public private(set) var didResumeAtOffsetHandler: [String: (URLSession, URLSessionTask, Int64, Int64) -> Void] = [:]
+            
+            /// Add event handler
+            @discardableResult
+            public func addDidResumeAtOffsetHandler(withId uid: String,
+                                                    _ handler: @escaping (URLSession, URLSessionTask, Int64, Int64) -> Void) -> String {
+                precondition(!self.didResumeAtOffsetHandler.keys.contains(uid), "Id already in use")
+                self.didResumeAtOffsetHandler[uid] = handler
+                self.hasEventHandlers = true
+                return uid
+            }
+            
+            /// Add event handler
+            @discardableResult
+            public func addDidResumeAtOffsetHandler(_ handler: @escaping (URLSession, URLSessionTask, Int64, Int64) -> Void) -> String {
+                return self.addDidResumeAtOffsetHandler(withId: UUID().uuidString, handler)
+            }
+            /// Remove event handler with the given Id
+            public func removeDidResumeAtOffsetHandler(withId id: String) {
+                self.didResumeAtOffsetHandler.removeValue(forKey: id)
+            }
+            
+            func urlSession(_ session: URLSession,
+                            downloadTask: URLSessionDownloadTask,
+                            didResumeAtOffset fileOffset: Int64,
+                            expectedTotalBytes: Int64) {
+                for (_, handler) in self.didResumeAtOffsetHandler {
+                    handler(session, downloadTask, fileOffset, expectedTotalBytes)
+                }
+            }
+            
+            public private(set) var didWriteDataHandler: [String: (URLSession, URLSessionTask, Int64, Int64, Int64) -> Void] = [:]
+            
+            /// Add event handler
+            @discardableResult
+            public func addDidWriteDataHandler(withId uid: String,
+                                               _ handler: @escaping (URLSession, URLSessionTask, Int64, Int64, Int64) -> Void) -> String {
+                precondition(!self.didWriteDataHandler.keys.contains(uid), "Id already in use")
+                self.didWriteDataHandler[uid] = handler
+                self.hasEventHandlers = true
+                return uid
+            }
+            /// Add event handler
+            @discardableResult
+            public func addDidWriteDataHandler(_ handler: @escaping (URLSession, URLSessionTask, Int64, Int64, Int64) -> Void) -> String {
+                return self.addDidWriteDataHandler(withId: UUID().uuidString, handler)
+            }
+            /// Remove event handler with the given Id
+            public func removeWriteDataHandler(withId id: String) {
+                self.didWriteDataHandler.removeValue(forKey: id)
+            }
+            
+            func urlSession(_ session: URLSession,
+                            task: URLSessionTask,
+                            didWriteData bytesWritten: Int64,
+                            totalBytesWritten: Int64,
+                            totalBytesExpectedToWrite: Int64) {
+                
+                for (_, handler) in self.didWriteDataHandler {
+                    handler(session,
+                            task,
+                            bytesWritten,
+                            totalBytesWritten,
+                            totalBytesExpectedToWrite)
+                }
             }
             
             
-            public init(request: URLRequest, response: URLResponse? = nil, error: Error? = nil, location: URL? = nil) {
-                self.request = request
-                self.response = response
-                self.error = error
-                self.location = location
+            func urlSession(_ session: URLSession,
+                            downloadTask: URLSessionDownloadTask,
+                            didWriteData bytesWritten: Int64,
+                            totalBytesWritten: Int64,
+                            totalBytesExpectedToWrite: Int64) {
+                urlSession(session,
+                           task: downloadTask,
+                           didWriteData: bytesWritten,
+                           totalBytesWritten: totalBytesWritten,
+                           totalBytesExpectedToWrite: totalBytesExpectedToWrite)
             }
             
+            override func removeHandlers(withId uid: String) {
+                self.didFinishDownloadingToHandler.removeValue(forKey: uid)
+                self.didResumeAtOffsetHandler.removeValue(forKey: uid)
+                self.didWriteDataHandler.removeValue(forKey: uid)
+                super.removeHandlers(withId: uid)
+            }
         }
         
-        private class URLSessionTaskEventHandlerBase: NSObject {
-            private var url: URL?
-            public var completionHandler: ((URL?, URLResponse?, Error?) -> Void)? = nil
-            
-            public var _urlSessionDidBecomeInvalidWithError: ((URLSession, Error?) -> Void)? = nil
-            public var _urlSessionDidFinishEventsForBackground: ((URLSession) -> Void)? = nil
-            public var _urlSessionDidCompleteWithError: ((URLSession,
-                                                          URLSessionTask,
-                                                          Error?) -> Void)? = nil
-            public var _urlSessionDidSendBodyData: ((URLSession,
-                                                     URLSessionTask,
-                                                     Int64,
-                                                     Int64,
-                                                     Int64) -> Void)? = nil
-            public var _urlSessionDidFinishDownloadingTo: ((URLSession,
-                                                            URLSessionTask,
-                                                            URL) -> Void)? = nil
-            public var _urlSessionDidResumeAtOffset: ((URLSession,
-                                                       URLSessionTask,
-                                                       Int64,
-                                                       Int64) -> Void)? = nil
-            public var _urlSessionDidWriteData: ((URLSession,
-                                                  URLSessionTask,
-                                                  Int64,
-                                                  Int64,
-                                                  Int64) -> Void)? = nil
-        }
-        
-        private class URLSessionDataTaskEventHandler: URLSessionTaskEventHandlerBase,
+        private class URLSessionDataTaskEventHandler: URLSessionDownloadTaskEventHandler,
                                                       URLSessionDataDelegate {
             
             
@@ -87,59 +156,40 @@ public extension WebRequest {
             
             var totalBytesWritten: Int64 = 0
             
-            func urlSession(_ session: URLSession,
-                            didBecomeInvalidWithError error: Error?) {
-                if let handler = self._urlSessionDidBecomeInvalidWithError {
-                    handler(session, error)
-                }
+            override func urlSession(_ session: URLSession,
+                                     didBecomeInvalidWithError error: Error?) {
+                super.urlSession(session, didBecomeInvalidWithError: error)
                 
                 //print("Removing download file didBecomeInvalidWithError")
                 try? FileManager.default.removeItem(at: self.uniqueTempFileURL)
             }
             
-            func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
-                if let handler = self._urlSessionDidFinishEventsForBackground {
-                    handler(session)
-                }
+            override func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
+                super.urlSessionDidFinishEvents(forBackgroundURLSession: session)
+                
                 //print("Removing download file forBackgroundURLSession")
                 try? FileManager.default.removeItem(at: self.uniqueTempFileURL)
             }
             
             
-            func urlSession(_ session: URLSession,
-                            task: URLSessionTask,
-                            didCompleteWithError error: Error?) {
+            override func urlSession(_ session: URLSession,
+                                     task: URLSessionTask,
+                                     didCompleteWithError error: Error?) {
                 
-                
-                if let handler = self._urlSessionDidFinishDownloadingTo,
-                   FileManager.default.fileExists(atPath: self.uniqueTempFileURL.path) {
-                    handler(session, task, self.uniqueTempFileURL)
-                }
-                if let handler = self._urlSessionDidCompleteWithError {
-                    handler(session, task, error)
+                if error == nil &&
+                    FileManager.default.fileExists(atPath: self.uniqueTempFileURL.path) {
+                    super.urlSession(session,
+                                     task: task,
+                                     didFinishDownloadingTo: self.uniqueTempFileURL)
                 }
                 
-                if let handler = self.completionHandler {
-                    var url: URL? = nil
-                    if FileManager.default.fileExists(atPath: self.uniqueTempFileURL.path) {
-                        url = self.uniqueTempFileURL
-                    }
-                    handler(url, task.response, error)
-                }
+                super.urlSession(session,
+                                 task: task,
+                                 didCompleteWithError: error)
                 
                 //print("Removing download file didCompleteWithError")
                 try? FileManager.default.removeItem(at: self.uniqueTempFileURL)
 
-            }
-            
-            func urlSession(_ session: URLSession,
-                            task: URLSessionTask,
-                            didSendBodyData bytesSent: Int64,
-                            totalBytesSent: Int64,
-                            totalBytesExpectedToSend: Int64) {
-                if let handler = self._urlSessionDidSendBodyData {
-                    handler(session, task, bytesSent, totalBytesSent, totalBytesExpectedToSend)
-                }
             }
             
             func urlSession(_ session: URLSession,
@@ -170,215 +220,49 @@ public extension WebRequest {
                 let bitesWriten = Int64(data.count)
                 self.totalBytesWritten += bitesWriten
                 
-                if let handler = self._urlSessionDidWriteData {
-                    var expectedBytesWritten: Int64 = NSURLSessionTransferSizeUnknown
-                    if let response = dataTask.response,
-                       let httpResponse = response as? HTTPURLResponse,
-                       let anyContentLength = httpResponse.allHeaderFields["Content-Length"],
-                       let strContentLength = anyContentLength as? String,
-                       let intConentLength = Int64(strContentLength) {
-                        expectedBytesWritten = intConentLength
-                    }
-                    
-                    handler(session,
-                            dataTask,
-                            bitesWriten,
-                            self.totalBytesWritten,
-                            expectedBytesWritten)
-                }
-            }
-            
-        }
-        
-        private class URLSessionDownloadTaskEventHandler: URLSessionTaskEventHandlerBase,
-                                                          URLSessionDownloadDelegate {
-            
-            
-            private var url: URL?
-            func urlSession(_ session: URLSession,
-                            didBecomeInvalidWithError error: Error?) {
-                if let handler = self._urlSessionDidBecomeInvalidWithError {
-                    handler(session, error)
-                }
-            }
-            
-            func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
-                if let handler = self._urlSessionDidFinishEventsForBackground {
-                    handler(session)
-                }
-            }
-            
-            
-            func urlSession(_ session: URLSession,
-                            task: URLSessionTask,
-                            didCompleteWithError error: Error?) {
-                
-                
-                if let handler = self._urlSessionDidCompleteWithError {
-                    handler(session, task, error)
+                var expectedBytesWritten: Int64 = NSURLSessionTransferSizeUnknown
+                if let response = dataTask.response,
+                   let httpResponse = response as? HTTPURLResponse,
+                   let anyContentLength = httpResponse.allHeaderFields["Content-Length"],
+                   let strContentLength = anyContentLength as? String,
+                   let intConentLength = Int64(strContentLength) {
+                    expectedBytesWritten = intConentLength
                 }
                 
-                if let handler = self.completionHandler {
-                    handler(url, task.response, error)
-                    self.url = nil
-                }
-
+                
+                self.urlSession(session,
+                                task: dataTask,
+                                didWriteData: bitesWriten,
+                                totalBytesWritten: self.totalBytesWritten,
+                                totalBytesExpectedToWrite: expectedBytesWritten)
+                
             }
             
-            func urlSession(_ session: URLSession,
-                            task: URLSessionTask,
-                            didSendBodyData bytesSent: Int64,
-                            totalBytesSent: Int64,
-                            totalBytesExpectedToSend: Int64) {
-                if let handler = self._urlSessionDidSendBodyData {
-                    handler(session, task, bytesSent, totalBytesSent, totalBytesExpectedToSend)
-                }
-            }
-            
-            func urlSession(_ session: URLSession,
-                            downloadTask: URLSessionDownloadTask,
-                            didFinishDownloadingTo location: URL) {
-                self.url = location
-                if let handler = self._urlSessionDidFinishDownloadingTo {
-                    handler(session, downloadTask, location)
-                }
-            }
-            
-            func urlSession(_ session: URLSession,
-                            downloadTask: URLSessionDownloadTask,
-                            didResumeAtOffset fileOffset: Int64,
-                            expectedTotalBytes: Int64) {
-                if let handler = self._urlSessionDidResumeAtOffset {
-                    handler(session, downloadTask, fileOffset, expectedTotalBytes)
-                }
-            }
-            
-            func urlSession(_ session: URLSession,
-                            downloadTask: URLSessionDownloadTask,
-                            didWriteData bytesWritten: Int64,
-                            totalBytesWritten: Int64,
-                            totalBytesExpectedToWrite: Int64) {
-                if let handler = self._urlSessionDidWriteData {
-                    handler(session, downloadTask, bytesWritten, totalBytesWritten, totalBytesExpectedToWrite)
-                }
-            }
+        }
+        
+        public typealias Results = TaskedWebResults<URL>
+        
+        private var downloadEventDelegate: URLSessionDownloadTaskEventHandler {
+            return self.eventDelegate as! URLSessionDownloadTaskEventHandler
         }
         
         
-        private var task: URLSessionTask! = nil
-        
-        /// Results from the request
-        public private(set) var results: Results
-        
-        
-        public override var state: WebRequest.State {
-            //Some times completion handler gets called even though task state says its still running on linux
-            guard self.results.hasResponse else {
-                return WebRequest.State(rawValue: self.task.state.rawValue)!
-            }
-            
-            #if _runtime(_ObjC) || swift(>=4.1.4)
-             if let e = self.results.error, (e as NSError).code == NSURLErrorCancelled {
-                return WebRequest.State.canceling
-             } else {
-                return WebRequest.State.completed
-             }
-            #else
-             if let e = self.results.error, let nsE = e as? NSError, nsE.code == NSURLErrorCancelled {
-                return WebRequest.State.canceling
-             } else {
-                return WebRequest.State.completed
-             }
-            #endif
-            
-            
-            //#warning ("This is a warning test")
-            
-        }
-        
-        /// The URL request object currently being handled by the request.
-        public var currentRequest: URLRequest? { return self.task.currentRequest }
-        /// The original request object passed when the request was created.
-        public private(set) var originalRequest: URLRequest?
-        /// The server’s response to the currently active request.
-        public var response: URLResponse? { return self.task.response }
-        
-        /// An app-provided description of the current request.
-        public var webDescription: String? {
-            get { return self.task.taskDescription }
-            set { self.task.taskDescription = newValue }
-        }
-        /// An identifier uniquely identifies the task within a given session.
-        public var taskIdentifier: Int { return self.task.taskIdentifier }
-        
-        public override var error: Swift.Error? { return self.task.error }
-        
-        private let eventDelegate: URLSessionTaskEventHandlerBase
-        
-        /// The relative priority at which you’d like a host to handle the task, specified as a floating point value between 0.0 (lowest priority) and 1.0 (highest priority).
-        public var priority: Float {
-            get { return self.task.priority }
-            set { self.task.priority = newValue }
-        }
-        
-        #if _runtime(_ObjC)
-        /// A representation of the overall request progress
-        @available (macOS 10.13, iOS 11.0, tvOS 11.0, watchOS 4.0, *)
-        public override var progress: Progress { return self.task.progress }
-        #endif
-        
-        
-        
-        public var urlSessionDidBecomeInvalidWithError: ((URLSession, Error?) -> Void)? {
-            get { return self.eventDelegate._urlSessionDidBecomeInvalidWithError }
-            set { self.eventDelegate._urlSessionDidBecomeInvalidWithError = newValue }
-        }
-        
-        
-        public var urlSessionDidFinishEventsForBackground: ((URLSession) -> Void)? {
-            get { return self.eventDelegate._urlSessionDidFinishEventsForBackground }
-            set { self.eventDelegate._urlSessionDidFinishEventsForBackground = newValue }
-        }
-        
-        public var urlSessionDidSendBodyData: ((URLSession, URLSessionTask, Int64, Int64, Int64) -> Void)? {
-            get { return self.eventDelegate._urlSessionDidSendBodyData }
-            set { self.eventDelegate._urlSessionDidSendBodyData = newValue }
-        }
-        
-        public var urlSessionDidFinishDownloadingTo: ((URLSession, URLSessionTask, URL) -> Void)? {
-            get { return self.eventDelegate._urlSessionDidFinishDownloadingTo }
-            set { self.eventDelegate._urlSessionDidFinishDownloadingTo = newValue }
-        }
-        
-        public var urlSessionDidResumeAtOffset: ((URLSession, URLSessionTask, Int64, Int64) -> Void)? {
-            get { return self.eventDelegate._urlSessionDidResumeAtOffset }
-            set { self.eventDelegate._urlSessionDidResumeAtOffset = newValue }
-        }
-        
-        public var urlSessionDidWriteData: ((URLSession, URLSessionTask, Int64, Int64, Int64) -> Void)? {
-            get { return self.eventDelegate._urlSessionDidWriteData }
-            set { self.eventDelegate._urlSessionDidWriteData = newValue }
-        }
         
         /// Create a new WebRequest using the provided url and session.
         ///
         /// - Parameters:
         ///   - request: The request to execute
         ///   - session: The URL Session to copy the configuration/queue from
+        ///   - completionHandler: The call back when done executing
         public init(_ request: @autoclosure () -> URLRequest,
-                    usingSession session: @autoclosure () -> URLSession) {
+                    usingSession session: @autoclosure () -> URLSession,
+                    completionHandler: ((Results) -> Void)? = nil) {
             let req = request()
-            self.originalRequest = req
-            
-            self.results = Results(request: req)
             #if swift(>=5.3) || _runtime(_ObjC)
             let delegate = URLSessionDownloadTaskEventHandler()
-            self.eventDelegate = delegate
             #else
             let delegate = URLSessionDataTaskEventHandler()
-            self.eventDelegate = delegate
             #endif
-            super.init()
             let originalSession = session()
             
             let session = URLSession(configuration: originalSession.configuration,
@@ -386,14 +270,16 @@ public extension WebRequest {
                                      delegateQueue: originalSession.delegateQueue)
             
             #if swift(>=5.3) || _runtime(_ObjC)
-            self.task = session.downloadTask(with: req)
+            let task = session.downloadTask(with: req)
             #else
-            self.task = session.dataTask(with: req)
+            let task = session.dataTask(with: req)
             #endif
             
-            self.eventDelegate._urlSessionDidCompleteWithError = { _, _, _ in
-                self.triggerStateChange(.completed)
-            }
+            super.init(task,
+                       eventDelegate: delegate,
+                       originalRequest: req,
+                       completionHandler: completionHandler)
+            
             
         }
         
@@ -402,63 +288,84 @@ public extension WebRequest {
         /// - Parameters:
         ///   - url: The url to request
         ///   - session: The URL Session to copy the configuration/queue from
-        public convenience init(_ url: @autoclosure () -> URL,
-                                usingSession session: @autoclosure () -> URLSession) {
-            self.init(URLRequest(url: url()), usingSession: session())
-        }
-        
-        /// Create a new WebRequest using the provided requset and session. and call the completionHandler when finished
-        ///
-        /// - Parameters:
-        ///   - request: The request to execute
-        ///   - session: The URL Session to copy the configuration/queue from
-        ///   - completionHandler: The call back when done executing
-        public convenience init(_ request: @autoclosure () -> URLRequest,
-                                usingSession session: @autoclosure () -> URLSession,
-                                completionHandler: @escaping (Results) -> Void) {
-            self.init(request(), usingSession: session())
-            
-            //self.completionHandler = completionHandler
-            self.eventDelegate.completionHandler = { location, response, error in
-                self.results = Results(request: self.originalRequest!,
-                                       response: response,
-                                       error: error,
-                                       location: location)
-                
-                /// was async
-                self.callSyncEventHandler { completionHandler(self.results) }
-            }
-        }
-        
-        /// Create a new WebRequest using the provided url and session. and call the completionHandler when finished
-        ///
-        /// - Parameters:
-        ///   - url: The url to request
-        ///   - session: The URL Session to copy the configuration/queue from
         ///   - completionHandler: The call back when done executing
         public convenience init(_ url: @autoclosure () -> URL,
                                 usingSession session: @autoclosure () -> URLSession,
-                                completionHandler: @escaping (Results) -> Void) {
+                                completionHandler: ((Results) -> Void)? = nil) {
             self.init(URLRequest(url: url()),
                       usingSession: session(),
                       completionHandler: completionHandler)
         }
         
-        /// Resumes the request, if it is suspended.
-        public override func resume() {
-            super.resume()
-            self.task.resume()
+        
+        
+        /// Add event handler
+        @discardableResult
+        public func addDidFinishDownloadingToHandler(withId uid: String,
+                                                     _ handler: @escaping (URLSession, DownloadRequest, URL) -> Void) -> String {
+            return self.downloadEventDelegate.addDidFinishDownloadingToHandler(withId: uid) { [weak self] session, _, url in
+                guard self != nil else { return }
+                handler(session, self!, url)
+            }
+        }
+        /// Add event handler
+        @discardableResult
+        public func addDidFinishDownloadingToHandler(_ handler: @escaping (URLSession, DownloadRequest, URL) -> Void) -> String {
+            return self.downloadEventDelegate.addDidFinishDownloadingToHandler { [weak self] session, _, url in
+                guard self != nil else { return }
+                handler(session, self!, url)
+            }
+        }
+        /// Remove event handler with the given Id
+        public func removeDidFinishDownloadingToHandler(withId id: String) {
+            self.downloadEventDelegate.removeDidFinishDownloadingToHandler(withId: id)
         }
         
-        /// Temporarily suspends a request.
-        public override func suspend() {
-            super.suspend()
-            self.task.suspend()
+        /// Add event handler
+        @discardableResult
+        public func addDidResumeAtOffsetHandler(withId uid: String,
+                                                _ handler: @escaping (URLSession, DownloadRequest, Int64, Int64) -> Void) -> String {
+            return self.downloadEventDelegate.addDidResumeAtOffsetHandler(withId: uid) { [weak self] session, _, a, b in
+                guard self != nil else { return }
+                handler(session, self!, a, b)
+            }
         }
         
-        public override func cancel() {
-            self.task.cancel()
-            super.cancel()
+        /// Add event handler
+        @discardableResult
+        public func addDidResumeAtOffsetHandler(_ handler: @escaping (URLSession, DownloadRequest, Int64, Int64) -> Void) -> String {
+            return self.downloadEventDelegate.addDidResumeAtOffsetHandler { [weak self] session, _, a, b in
+                guard self != nil else { return }
+                handler(session, self!, a, b)
+            }
         }
+        /// Remove event handler with the given Id
+        public func removeDidResumeAtOffsetHandler(withId id: String) {
+            self.downloadEventDelegate.removeDidResumeAtOffsetHandler(withId: id)
+        }
+        
+        /// Add event handler
+        @discardableResult
+        public func addDidWriteDataHandler(withId uid: String,
+                                           _ handler: @escaping (URLSession, DownloadRequest, Int64, Int64, Int64) -> Void) -> String {
+            return self.downloadEventDelegate.addDidWriteDataHandler(withId: uid) { [weak self] session, _, a, b, c in
+                guard self != nil else { return }
+                handler(session, self!, a, b, c)
+            }
+        }
+        /// Add event handler
+        @discardableResult
+        public func addDidWriteDataHandler(_ handler: @escaping (URLSession, DownloadRequest, Int64, Int64, Int64) -> Void) -> String {
+            return self.downloadEventDelegate.addDidWriteDataHandler { [weak self] session, _, a, b, c in
+                guard self != nil else { return }
+                handler(session, self!, a, b, c)
+            }
+        }
+        
+        /// Remove event handler with the given Id
+        public func removeWriteDataHandler(withId id: String) {
+            self.downloadEventDelegate.removeWriteDataHandler(withId: id)
+        }
+        
     }
 }
