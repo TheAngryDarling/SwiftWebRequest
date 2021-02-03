@@ -457,12 +457,33 @@ public extension WebRequest {
 public extension WebRequest.TaskedWebResults where Results == URL {
     /// Same as results
     var location: URL? { return self.results }
+    
+    init(request: URLRequest,
+         response: URLResponse? = nil,
+         error: Error? = nil,
+         location: URL?) {
+        
+        self.init(request: request,
+                  response: response,
+                  error: error,
+                  results: location)
+    }
 }
 
 extension WebRequest.TaskedWebResults where Results == Data {
     /// Same as results
     public var data: Data? { return self.results }
     
+    public init(request: URLRequest,
+                response: URLResponse? = nil,
+                error: Error? = nil,
+                data: Data?) {
+        
+        self.init(request: request,
+                  response: response,
+                  error: error,
+                  results: data)
+    }
     /// Allows for clearing of the reponse data.
     /// This can be handy when working with GroupRequests with a lot of data.
     /// That way you can process each request as it comes in and clear the data so its not sitting in memeory until all requests are finished
