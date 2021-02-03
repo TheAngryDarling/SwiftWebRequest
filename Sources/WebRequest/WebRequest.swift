@@ -146,13 +146,15 @@ open class WebRequest: NSObject {
     }
     
     internal func callSyncEventHandler(handler: @escaping () -> Void) {
-        #if _runtime(_ObjC) || swift(>=4.1)
-        let currentThreadName = Thread.current.name
-        defer { Thread.current.name = currentThreadName }
-        if Thread.current.name == nil || Thread.current.name == "" { Thread.current.name = "WebRequest.Events" }
-        #endif
-        
-        handler()
+        eventHandlerQueue.sync {
+            #if _runtime(_ObjC) || swift(>=4.1)
+            let currentThreadName = Thread.current.name
+            defer { Thread.current.name = currentThreadName }
+            if Thread.current.name == nil || Thread.current.name == "" { Thread.current.name = "WebRequest.Events" }
+            #endif
+            
+            handler()
+        }
     }
     
     /// Starts/resumes the task, if it is suspended.
