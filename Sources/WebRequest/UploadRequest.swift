@@ -31,7 +31,7 @@ public extension WebRequest {
             req.httpMethod = "POST"
             let originalSession = session()
             
-            let eventDelegate = URLSessionTaskEventHandler()
+            let eventDelegate = URLSessionDataTaskEventHandler()
             
             
             let session = URLSession(configuration: originalSession.configuration,
@@ -75,7 +75,7 @@ public extension WebRequest {
             req.httpMethod = "POST"
             let originalSession = session()
             
-            let eventDelegate = URLSessionTaskEventHandler()
+            let eventDelegate = URLSessionDataTaskEventHandler()
             
             
             let session = URLSession(configuration: originalSession.configuration,
@@ -114,7 +114,7 @@ public extension WebRequest {
                     usingSession session: @autoclosure () -> URLSession) {
             let originalSession = session()
             
-            let eventDelegate = URLSessionTaskEventHandler()
+            let eventDelegate = URLSessionDataTaskEventHandler()
             
             
             let session = URLSession(configuration: originalSession.configuration,
