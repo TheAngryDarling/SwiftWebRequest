@@ -130,10 +130,18 @@ public extension WebRequest {
                 t.userInfo[WebRequest.UserInfoKeys.parent] = self
                 
                 //Setup notification monitoring
-                _ = NotificationCenter.default.addObserver(forName: nil,
+                /*_ = NotificationCenter.default.addObserver(forName: nil,
                                                            object: t,
                                                            queue: nil,
-                                                           using: self.webRequestEventMonitor)
+                                                           using: self.webRequestEventMonitor)*/
+                // We do it this way to use a weak self to ensure no strong reference between
+                // NotificationCenter and ourself
+                _ = NotificationCenter.default.addObserver(forName: nil,
+                                                           object: t,
+                                                           queue: nil) { [weak self] notification in
+                    self?.webRequestEventMonitor(notification: notification)
+                    
+                }
                 
                 #if _runtime(_ObjC)
                 if #available (macOS 10.13, iOS 11.0, tvOS 11.0, watchOS 4.0, *) {
