@@ -42,7 +42,7 @@ public extension WebRequest {
             func urlSession(_ session: URLSession,
                             task: URLSessionTask,
                             didFinishDownloadingTo location: URL) {
-                self.results = location
+                self.taskResults[task.taskIdentifier] = location
                 for (_, handler) in self.didFinishDownloadingToHandler {
                     handler(session, task, location)
                 }
@@ -240,7 +240,7 @@ public extension WebRequest {
             
         }
         
-        public typealias Results = TaskedWebResults<URL>
+        public typealias Results = TaskedWebRequestResults<URL>
         
         private var downloadEventDelegate: URLSessionDownloadTaskEventHandler {
             return self.eventDelegate as! URLSessionDownloadTaskEventHandler
@@ -257,27 +257,24 @@ public extension WebRequest {
         public init(_ request: @autoclosure () -> URLRequest,
                     usingSession session: @autoclosure () -> URLSession,
                     completionHandler: ((Results) -> Void)? = nil) {
-            let req = request()
             #if swift(>=5.3) || _runtime(_ObjC)
             let delegate = URLSessionDownloadTaskEventHandler()
             #else
             let delegate = URLSessionDataTaskEventHandler()
             #endif
-            let originalSession = session()
             
-            let session = URLSession(configuration: originalSession.configuration,
-                                     delegate: delegate,
-                                     delegateQueue: originalSession.delegateQueue)
+            let session = URLSession(copy: session(),
+                                     delegate: delegate)
             
             #if swift(>=5.3) || _runtime(_ObjC)
-            let task = session.downloadTask(with: req)
+            let task = session.downloadTask(with: request())
             #else
-            let task = session.dataTask(with: req)
+            let task = session.dataTask(with: request())
             #endif
             
             super.init(task,
                        eventDelegate: delegate,
-                       originalRequest: req,
+                       //originalRequest: req,
                        completionHandler: completionHandler)
             
             
