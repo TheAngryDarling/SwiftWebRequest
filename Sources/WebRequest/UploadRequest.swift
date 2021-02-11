@@ -29,17 +29,14 @@ public extension WebRequest {
                     completionHandler: ((Results) -> Void)? = nil) {
             var req = request()
             req.httpMethod = "POST"
-            let originalSession = session()
             
             let eventDelegate = URLSessionDataTaskEventHandler()
             
             
-            let session = URLSession(configuration: originalSession.configuration,
-                                     delegate: eventDelegate,
-                                     delegateQueue: originalSession.delegateQueue)
+            let session = URLSession(copy: session(),
+                                     delegate: eventDelegate)
             super.init(session.uploadTask(with: req, from: bodyData),
                        eventDelegate: eventDelegate,
-                       originalRequest: req,
                        completionHandler: completionHandler)
         }
         
@@ -83,7 +80,6 @@ public extension WebRequest {
                                      delegateQueue: originalSession.delegateQueue)
             super.init(session.uploadTask(with: req, fromFile: fileURL),
                        eventDelegate: eventDelegate,
-                       originalRequest: req,
                        completionHandler: completionHandler)
         }
         
@@ -121,8 +117,7 @@ public extension WebRequest {
                                      delegate: eventDelegate,
                                      delegateQueue: originalSession.delegateQueue)
             super.init(session.uploadTask(withStreamedRequest: request),
-                       eventDelegate: eventDelegate,
-                       originalRequest: request)
+                       eventDelegate: eventDelegate)
         }
     }
 }
