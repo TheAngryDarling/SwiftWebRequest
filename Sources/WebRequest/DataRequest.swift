@@ -16,6 +16,21 @@ import Foundation
 public extension WebRequest {
     /// Allows for a single data web request
     class DataRequest: DataBaseRequest {
+        /// Create a new WebRequest using the provided url and session.
+        ///
+        /// - Parameters:
+        ///   - request: The request to execute
+        ///   - session: The URL Session to use
+        ///   - eventDelegate: The Event Delegate used with the session
+        ///   - completionHandler: The call back when done executing
+        internal init(_ request: @autoclosure () -> URLRequest,
+                      usingSession session: URLSession,
+                      eventDelegate: URLSessionDataTaskEventHandler,
+                      completionHandler: ((Results) -> Void)? = nil) {
+            super.init(session.dataTask(with: request()),
+                       eventDelegate: eventDelegate,
+                       completionHandler: completionHandler)
+        }
         
         /// Create a new WebRequest using the provided url and session.
         ///
@@ -28,18 +43,15 @@ public extension WebRequest {
                     completionHandler: ((Results) -> Void)? = nil) {
             
             //print("Creating DataRequest")
-            let req = request()
-            let originalSession = session()
             
             let eventDelegate = URLSessionDataTaskEventHandler()
             
             
-            let session = URLSession(configuration: originalSession.configuration,
-                                     delegate: eventDelegate,
-                                     delegateQueue: originalSession.delegateQueue)
-            super.init(session.dataTask(with: req),
+            let session = URLSession(copy: session(),
+                                     delegate: eventDelegate)
+            
+            super.init(session.dataTask(with: request()),
                        eventDelegate: eventDelegate,
-                       originalRequest: req,
                        completionHandler: completionHandler)
             
         }
