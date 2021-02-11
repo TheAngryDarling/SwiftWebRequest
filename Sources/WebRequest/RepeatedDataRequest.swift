@@ -179,6 +179,8 @@ public extension WebRequest {
         private var repeatCount: Int = 0
         
         private var webRequest: DataRequest? = nil
+        private var notificationCenterObserver: NSObjectProtocol? = nil
+        private let notificationCenterEventQueue: OperationQueue = OperationQueue()
         //private let request: URLRequest
         //private let session: URLSession
         
@@ -192,7 +194,8 @@ public extension WebRequest {
         #endif
         
         private let requestGenerator: RequestGenerator
-        private let session: () -> URLSession
+        private let session: URLSession
+        private let delegate: DataBaseRequest.URLSessionDataTaskEventHandler
         
         private var completionHandler: ((DataRequest.Results, T?, Swift.Error?) -> Void)? = nil
         private let completionHandlerLockingQueue: DispatchQueue = DispatchQueue(label: "org.webrequest.WebRequest.CompletionHandler.Locking")
@@ -216,7 +219,9 @@ public extension WebRequest {
                     completionHandler: ((DataRequest.Results, T?, Swift.Error?) -> Void)? = nil) {
             self.repeatInterval = repeatInterval
             self.requestGenerator = requestGenerator
-            self.session = session
+            let delegate = DataBaseRequest.URLSessionDataTaskEventHandler()
+            self.delegate = delegate
+            self.session = URLSession(copy: session(), delegate: delegate)
             self.repeatHandler = repeatHandler
             self.completionHandler = completionHandler
             
@@ -301,19 +306,47 @@ public extension WebRequest {
         
         deinit {
            self.cancelRequest()
+            if let observer = self.notificationCenterObserver {
+                NotificationCenter.default.removeObserver(observer)
+                self.notificationCenterObserver = nil
+            }
+            self.webRequest?.emptyResultsData()
+            self.webRequest = nil
         }
         
         private func createRequest(repeatCount: Int) {
             
-            let req: URLRequest =  {
+            self.currentRequest =  {
                 guard repeatCount > 0 else { return self.originalRequest }
                 return self.requestGenerator.generate(previousRequest: self.currentRequest,
                                                       repeatCount: self.repeatCount)
             }()
             
-            self.currentRequest = req
-            let wR = DataRequest(req, usingSession: self.session()) { requestResults in
-                self.webRequest = nil
+            // Empty out links/data for current data request
+            if let observer = self.notificationCenterObserver {
+                // Stop observing old request
+                NotificationCenter.default.removeObserver(observer)
+                self.notificationCenterObserver = nil
+            }
+            // Empty old request data
+            self.webRequest?.emptyResultsData()
+            self.webRequest = nil
+            
+            self.webRequest = DataRequest(self.currentRequest,
+                                          usingSession: self.session,
+                                          eventDelegate: self.delegate) {  [weak self] requestResults in
+                
+                guard self != nil else { return }
+                
+                // Empty out links/data for current data request
+                if let observer = self?.notificationCenterObserver {
+                    // Stop observing old request
+                    NotificationCenter.default.removeObserver(observer)
+                    self?.notificationCenterObserver = nil
+                }
+                // Empty old request data
+                self?.webRequest?.emptyResultsData()
+                self?.webRequest = nil
                 
                 
                 // Get response error if any
@@ -322,9 +355,9 @@ public extension WebRequest {
                 var results: T? = nil
                 if shouldContinue { //If we are ok to continue so far we should call repeatHandler
                     do {
-                        if let f = self.repeatHandler {
+                        if let f = self?.repeatHandler {
                             //Call repeat handler
-                            let r = try f(self, requestResults, self.repeatCount)
+                            let r = try f(self!, requestResults, self!.repeatCount)
                             shouldContinue = r.shouldRepeat
                             if !shouldContinue { results = r.finishedResults }
                             //results = r.results
@@ -341,23 +374,31 @@ public extension WebRequest {
                 if shouldContinue {
                     // If we should repeat, then setup new block for execution in repeat interval.
                     // Tried using a Timer but it wouldn't execute so changed to DispatchQueue
-                    let t = DispatchTime.now() + self.repeatInterval
-                    DispatchQueue.global().asyncAfter(deadline: t) { [weak self] in
-                        guard let s = self else { return }
-                        guard s.state == .running else { return }
-                        
-                        s.repeatCount += 1
-                        s.createRequest(repeatCount: s.repeatCount)
+                    if let s = self {
+                        let t = DispatchTime.now() + s.repeatInterval
+                        DispatchQueue.global().asyncAfter(deadline: t) { [weak self] in
+                            guard let s = self else { return }
+                            guard s.state == .running else { return }
+                            
+                            s.repeatCount += 1
+                            s.createRequest(repeatCount: s.repeatCount)
+                        }
                     }
                 } else {
-                    self._state = .completed
-                    self._error = err
+                    
+                    let finishState = (self?.webRequest?.state ?? .completed)
+                    self?._state = finishState
+                    self?._error = err
                     // We are no longer repeating.  Lets trigger the proper event handlers.
-                    self.triggerStateChange(.completed)
-                    self.completionHandlerLockingQueue.sync { self.hasCalledCompletionHandler = true }
-                    if let handler = self.completionHandler {
+                    self?.triggerStateChange(finishState)
+                    self?.completionHandlerLockingQueue.sync {
+                        self?.hasCalledCompletionHandler = true
+                    }
+                    if let handler = self?.completionHandler {
                         /// was async
-                        self.callSyncEventHandler { handler(requestResults, results, err) }
+                        self?.callSyncEventHandler {
+                            handler(requestResults, results, err)
+                        }
                     }
                     
                 }
@@ -366,16 +407,17 @@ public extension WebRequest {
             }
             
             //Propagate user info to repeated request
-            for (k,v) in self.userInfo { wR.userInfo[k] = v }
+            for (k,v) in self.userInfo { self.webRequest!.userInfo[k] = v }
+            
             
             //Setup notification monitoring
-            _ = NotificationCenter.default.addObserver(forName: nil,
-                                                       object: wR,
-                                                       queue: nil,
-                                                       using: self.webRequestEventMonitor)
-            self.webRequest = wR
-    
-            wR.resume()
+            self.notificationCenterObserver = NotificationCenter.default.addObserver(forName: nil,
+                                                                                     object: self.webRequest!,
+                                                                                     queue: self.notificationCenterEventQueue,
+                                                                                     using: self.webRequestEventMonitor)
+            
+            
+            self.webRequest?.resume()
         }
         
         // Resumes the task, if it is suspended.
@@ -411,11 +453,18 @@ public extension WebRequest {
         public override func cancel() {
             guard self._state != .canceling && self._state != .completed else { return }
             
-            if (self.webRequest == nil) {
+            // If we cancel with no child request
+            if self.webRequest == nil ||
+                // Or has a child request without a resposne
+               !(self.webRequest?.results.hasResponse ?? false) ||
+                // Or a child request with a canceling resposne
+               (self.webRequest?.state == .canceling) {
+                
                 let results = DataRequest.Results(request: self.currentRequest,
                                                   response: nil,
                                                   error: DataRequest.createCancelationError(forURL: self.currentRequest.url!),
-                                                  data: nil)
+                                                  data: self.webRequest?.results.data)
+                
                 if let f = self.completionHandler {
                     /// was async
                     self.callSyncEventHandler { f(results, nil, results.error) }
@@ -432,8 +481,13 @@ public extension WebRequest {
         }
         
         private func cancelRequest() {
-            if let r = self.webRequest { r.cancel() }
+            self.webRequest?.cancel()
             self.webRequest = nil
+            if let observer = self.notificationCenterObserver {
+                NotificationCenter.default.removeObserver(observer)
+                self.notificationCenterObserver = nil
+            }
+            
         }
         
         
