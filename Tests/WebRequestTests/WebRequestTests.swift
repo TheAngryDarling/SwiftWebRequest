@@ -135,8 +135,11 @@ final class WebRequestTests: XCTestCase {
     }
     func testSingleRequest() {
         let sig = DispatchSemaphore(value: 0)
+        //print("Creating base session")
         let session = URLSession(configuration: URLSessionConfiguration.default)
+        //print("Creating url")
         let testURL = testURLSearch.appendingQueryItem("q=Swift")
+        //print("Creating request")
         let request = WebRequest.DataRequest(testURL, usingSession: session) { r in
             XCTAssertNil(r.error, "Expected no Error but found '\(r.error as Any)'")
             guard let s = r.responseString() else {
@@ -148,8 +151,10 @@ final class WebRequestTests: XCTestCase {
             
             sig.signal()
         }
+        //print("Starting request")
         request.resume()
         //request.cancel()
+        //print("Waiting for request to finish")
         request.waitUntilComplete()
         sig.wait()
     }
@@ -336,7 +341,76 @@ final class WebRequestTests: XCTestCase {
         
         
     }
+    /*
+    // Long repeat request to monitor memory usage
+    func testRepeatRequestLong() {
+        
+        func repeatHandler(_ request: WebRequest.RepeatedDataRequest<Void>,
+                           _ results: WebRequest.DataRequest.Results,
+                           _ repeatCount: Int) -> WebRequest.RepeatedDataRequest<Void>.RepeatResults {
+            
+            /*if let responseString = results.responseString() {
+                XCTAssertEqual(responseString, "Query", "[\(repeatCount)]: Expected response to match")
+            } else {
+                XCTFail("[\(repeatCount)]: Unable to convert resposne into string: \(results.data as Any)")
+            }*/
+           
+            
+            //print("[\(repeatCount)] - \(results.originalURL!.absoluteString) - Finished")
+            return WebRequest.RepeatedDataRequest<Void>.RepeatResults.repeat
+            //return (repeat: rep, results: results)
+        }
+        let session = URLSession.shared
+        let req = testURLSearch
+        let sig = DispatchSemaphore(value: 0)
+        let r = WebRequest.RepeatedDataRequest<Void>(req,
+                                                     usingSession: session,
+                                                     repeatInterval: 1,
+                                                     repeatHandler: repeatHandler) { rs, r, e in
+            
+            
+            print("All Done!")
+            
+             sig.signal()
+        }
+        
+        r.resume()
+        sig.wait()
+        
+        
+    }
     
+    func testRepeatRequestLongIndividual() {
+        let urlSession = URLSession.shared
+        while true {
+            let sig = DispatchSemaphore(value: 0)
+            
+            let wr = WebRequest.DataRequest(testURLSearch, usingSession: urlSession) { _ in
+                sig.signal()
+            }
+            wr.resume()
+            
+            sig.wait()
+            wr.emptyResultsData()
+            Thread.sleep(forTimeInterval: 1)
+        }
+    }
+    
+    func testRepeatRequestLongDataTask() {
+        let urlSession = URLSession.shared
+        while true {
+            let sig = DispatchSemaphore(value: 0)
+            
+            let task = urlSession.dataTask(with: testURLSearch) { _, _, _ in
+                sig.signal()
+            }
+            task.resume()
+            
+            sig.wait()
+            Thread.sleep(forTimeInterval: 1)
+        }
+    }
+    */
     
     func testRepeatRequestCancelled() {
         func repeatHandler(_ request: WebRequest.RepeatedDataRequest<Void>,
