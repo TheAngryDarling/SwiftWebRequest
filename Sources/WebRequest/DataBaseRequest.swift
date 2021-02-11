@@ -16,19 +16,10 @@ public extension WebRequest {
     /// Allows for a single data web request
     class DataBaseRequest: TaskedWebRequest<Data> {
         
-        public typealias Results = TaskedWebResults<Data>
+        public typealias Results = TaskedWebRequestResults<Data>
         
         internal class URLSessionDataTaskEventHandler: URLSessionTaskEventHandlerWithCompletionHandler<Data>,
                                                        URLSessionDataDelegate {
-            
-            
-            override func urlSession(_ session: URLSession,
-                                     task: URLSessionTask,
-                                     didCompleteWithError error: Error?) {
-               super.urlSession(session, task: task, didCompleteWithError: error)
-                self.results = nil
-            }
-            
             
             
             public private(set) var didReceiveDataHandler: [String: (URLSession, URLSessionDataTask, Data) -> Void] = [:]
@@ -60,8 +51,12 @@ public extension WebRequest {
                             didReceive data: Data) {
                 
                 if self.completionHandler.count > 0 || !self.hasEventHandlers {
-                    if self.results == nil { self.results = Data() }
-                    self.results?.append(data)
+                    if var workingData = self.taskResults[dataTask.taskIdentifier] {
+                        workingData.append(data)
+                        self.taskResults[dataTask.taskIdentifier] = workingData
+                    } else {
+                        self.taskResults[dataTask.taskIdentifier] = data
+                    }
                 }
                 
                 for (_, handler) in self.didReceiveDataHandler {
@@ -88,16 +83,13 @@ public extension WebRequest {
         /// - Parameters:
         ///   - task: The task executing the request
         ///   - eventDelegate: The delegate used to monitor the task events
-        ///   - originalRequest: The original request of the task
         ///   - completionHandler: The call back when done executing
         internal init(_ task: URLSessionDataTask,
                       eventDelegate: URLSessionDataTaskEventHandler,
-                      originalRequest: URLRequest,
                       completionHandler: ((Results) -> Void)? = nil) {
             //print("Creating DataBaseRequest")
             super.init(task,
                        eventDelegate: eventDelegate,
-                       originalRequest: originalRequest,
                        completionHandler: completionHandler)
         }
         
@@ -120,7 +112,8 @@ public extension WebRequest {
         /// This can be handy when working with GroupRequests with a lot of data.
         /// That way you can process each request as it comes in and clear the data so its not sitting in memeory until all requests are finished
         public func emptyResultsData() {
-            self.results.emptyData()
+            self._results?.emptyData()
+            self._results = nil
         }
     }
 }
