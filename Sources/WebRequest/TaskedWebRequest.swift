@@ -12,6 +12,13 @@ import Foundation
     #endif
 #endif
 
+public protocol TaskedWebRequestResultsContainer {
+    /// Empty any locally loaded WebRequest Data
+    mutating func emptyLocallyLoadedData()
+}
+
+public typealias TaskedWebRequestCompletionHandlerResults = TaskedWebRequestResultsContainer
+
 public extension WebRequest {
     
     internal class URLSessionTaskEventHandler: NSObject,
@@ -20,6 +27,9 @@ public extension WebRequest {
         
         public internal(set) var hasEventHandlers: Bool = false
         
+        deinit {
+            self.removeAllHandlers()
+        }
         
         public private(set) var didSendBodyDataHandler: [String: (URLSession, URLSessionTask, Int64, Int64, Int64) -> Void] = [:]
         
@@ -159,20 +169,38 @@ public extension WebRequest {
             self.didBecomeInvalidWithErrorHandler.removeValue(forKey: uid)
             self.sessionDidFinishEventsForBackgroundHandler.removeValue(forKey: uid)
         }
+        
+        public func removeAllHandlers() {
+            self.didSendBodyDataHandler.removeAll()
+            self.didCompleteWithErrorHandler.removeAll()
+            self.didBecomeInvalidWithErrorHandler.removeAll()
+            self.sessionDidFinishEventsForBackgroundHandler.removeAll()
+        }
     }
     
     
-    internal class URLSessionTaskEventHandlerWithCompletionHandler<CompletionResults>: URLSessionTaskEventHandler {
-        public var results: CompletionResults?
+    internal class URLSessionTaskEventHandlerWithCompletionHandler<CompletionResults>: URLSessionTaskEventHandler where CompletionResults: TaskedWebRequestCompletionHandlerResults {
+        internal var taskResults: [Int: CompletionResults] = [:]
+        //public var results: CompletionResults?
         
-        
+        deinit {
+            for k in self.taskResults.keys {
+                self.taskResults[k]!.emptyLocallyLoadedData()
+            }
+            self.taskResults.removeAll(keepingCapacity: false)
+        }
         override func urlSession(_ session: URLSession,
                                  task: URLSessionTask,
                                  didCompleteWithError error: Error?) {
+            
             for (_, handler) in self.completionHandler {
-                handler(self.results, task.response, error)
+                autoreleasepool {
+                    handler(self.taskResults[task.taskIdentifier], task.response, error)
+                }
             }
             super.urlSession(session, task: task, didCompleteWithError: error)
+            self.taskResults[task.taskIdentifier]?.emptyLocallyLoadedData()
+            self.taskResults.removeValue(forKey: task.taskIdentifier)
         }
         
         
@@ -201,11 +229,16 @@ public extension WebRequest {
             self.completionHandler.removeValue(forKey: uid)
             super.removeHandlers(withId: uid)
         }
+        
+        public override func removeAllHandlers() {
+            self.completionHandler.removeAll()
+            super.removeAllHandlers()
+        }
     }
     
     
     /// Results container for request response
-    struct TaskedWebResults<Results> {
+    struct TaskedWebRequestResults<Results> where Results: TaskedWebRequestResultsContainer {
         public let request: URLRequest
         public let response: URLResponse?
         public let error: Error?
@@ -232,16 +265,24 @@ public extension WebRequest {
             self.error = error
             self.results = results
         }
+        
+        public mutating func clearResults() {
+            self.results?.emptyLocallyLoadedData()
+            self.results = nil
+        }
     }
     
-    class TaskedWebRequest<CompletionResults>: WebRequest {
+    class TaskedWebRequest<CompletionResults>: WebRequest where CompletionResults: TaskedWebRequestResultsContainer {
         
         
         
         private var task: URLSessionTask! = nil
         
         /// Results from the request
-        public internal(set) var results: TaskedWebResults<CompletionResults>
+        internal var _results: TaskedWebRequestResults<CompletionResults>? = nil
+        public var results: TaskedWebRequestResults<CompletionResults> {
+            return _results ?? TaskedWebRequestResults<CompletionResults>(request: self.originalRequest!)
+        }
         
         public override var state: WebRequest.State {
             //Some times completion handler gets called even though task state says its still running on linux
@@ -250,13 +291,16 @@ public extension WebRequest {
             }
             
             #if _runtime(_ObjC) || swift(>=4.1.4)
-             if let e = self.results.error, (e as NSError).code == NSURLErrorCancelled {
+             if let e = self.results.error,
+                (e as NSError).code == NSURLErrorCancelled {
                 return WebRequest.State.canceling
              } else {
                 return WebRequest.State.completed
              }
             #else
-             if let e = self.results.error, let nsE = e as? NSError, nsE.code == NSURLErrorCancelled {
+             if let e = self.results.error,
+                let nsE = e as? NSError,
+                nsE.code == NSURLErrorCancelled {
                 return WebRequest.State.canceling
              } else {
                 return WebRequest.State.completed
@@ -271,7 +315,7 @@ public extension WebRequest {
         /// The URL request object currently being handled by the request.
         public var currentRequest: URLRequest? { return self.task.currentRequest }
         /// The original request object passed when the request was created.
-        public private(set) var originalRequest: URLRequest?
+        public var originalRequest: URLRequest? { return self.task.originalRequest }
         /// The server’s response to the currently active request.
         public var response: URLResponse? { return self.task.response }
         
@@ -308,25 +352,31 @@ public extension WebRequest {
         ///   - completionHandler: The call back when done executing
         internal init(_ task: URLSessionTask,
                       eventDelegate: URLSessionTaskEventHandlerWithCompletionHandler<CompletionResults>,
-                      originalRequest: URLRequest,
-                      completionHandler: ((TaskedWebResults<CompletionResults>) -> Void)? = nil) {
+                      completionHandler: ((TaskedWebRequestResults<CompletionResults>) -> Void)? = nil) {
             //print("Creating Tasked Request")
             self.task = task
             self.eventDelegate = eventDelegate
-            self.originalRequest = originalRequest
-            self.results = TaskedWebResults<CompletionResults>(request: originalRequest)
             super.init()
-            self.eventDelegate.addCompletionHandler { results, response, error in
-                self.results = TaskedWebResults<CompletionResults>(request: self.originalRequest!,
+            self.eventDelegate.addCompletionHandler(withId: "self") { [weak self] results, response, error in
+                guard self != nil else { return }
+                let results = TaskedWebRequestResults<CompletionResults>(request: self!.originalRequest!,
                                                                    response: response,
                                                                    error: error,
                                                                    results: results)
-                self.triggerStateChange(.completed)
+                
+                self!._results = results
+                self!.triggerStateChange(.completed)
                 if let ch = completionHandler {
-                    self.callSyncEventHandler { ch(self.results) }
+                    self!.callSyncEventHandler { ch(results) }
                 }
             }
             
+        }
+        
+        deinit {
+            self._results?.clearResults()
+            self._results = nil
+            self.eventDelegate.removeAllHandlers()
         }
         
         /// Add event handler
@@ -441,7 +491,8 @@ public extension WebRequest {
             
             //Setup results for cancelled requests
             if !self.results.hasResponse {
-                self.results = TaskedWebResults<CompletionResults>(request: self.originalRequest!,
+                self._results?.clearResults()
+                self._results = TaskedWebRequestResults<CompletionResults>(request: self.originalRequest!,
                                                                    response: nil,
                                                                    error: WebRequest.createCancelationError(forURL: self.originalRequest!.url!),
                                                                    results: nil)
@@ -454,14 +505,14 @@ public extension WebRequest {
     }
 }
 
-public extension WebRequest.TaskedWebResults where Results == URL {
+public extension WebRequest.TaskedWebRequestResults where Results == URL {
     /// Same as results
     var location: URL? { return self.results }
     
-    init(request: URLRequest,
-         response: URLResponse? = nil,
-         error: Error? = nil,
-         location: URL?) {
+    /*convenience*/ init(request: URLRequest,
+                     response: URLResponse? = nil,
+                     error: Error? = nil,
+                     location: URL?) {
         
         self.init(request: request,
                   response: response,
@@ -470,14 +521,14 @@ public extension WebRequest.TaskedWebResults where Results == URL {
     }
 }
 
-extension WebRequest.TaskedWebResults where Results == Data {
+public extension WebRequest.TaskedWebRequestResults where Results == Data {
     /// Same as results
-    public var data: Data? { return self.results }
+    var data: Data? { return self.results }
     
-    public init(request: URLRequest,
-                response: URLResponse? = nil,
-                error: Error? = nil,
-                data: Data?) {
+    /*convenience*/ init(request: URLRequest,
+                            response: URLResponse? = nil,
+                            error: Error? = nil,
+                            data: Data?) {
         
         self.init(request: request,
                   response: response,
@@ -488,13 +539,12 @@ extension WebRequest.TaskedWebResults where Results == Data {
     /// This can be handy when working with GroupRequests with a lot of data.
     /// That way you can process each request as it comes in and clear the data so its not sitting in memeory until all requests are finished
     internal mutating func emptyData() {
-        self.results?.removeAll()
-        self.results = nil
+        self.clearResults()
     }
     
     /// Trys to convert the resposne data to a string using the response.textEncodingName if provided.
     /// If not it will use the defaultEncoding that is passed into the method
-    public func responseString(defaultEncoding encoding: String.Encoding = .utf8) -> String? {
+    func responseString(defaultEncoding encoding: String.Encoding = .utf8) -> String? {
         guard let response = self.response else { return nil }
         guard let data = self.data else { return nil }
         var responseEncoding: String.Encoding? = nil
