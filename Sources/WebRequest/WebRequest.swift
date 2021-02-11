@@ -168,20 +168,19 @@ open class WebRequest: NSObject {
     /// Temporarily suspends a task.
     open func suspend() {
         guard type(of: self) != WebRequest.self else { fatalError("Not Impelemented") }
+        guard self.state == .running else { return }
         self.triggerStateChange(.suspended)
     }
     /// Cancels the task
     open func cancel() {
         guard type(of: self) != WebRequest.self else { fatalError("Not Impelemented") }
+        guard self.state == .running || self.state == .suspended else { return }
         self.triggerStateChange(.canceling)
     }
     
     /// Wait until request is completed.  There is no guarentee that the completion events were called before this method returns
     public func waitUntilComplete() {
-         /*while ((self.state == .running || self.state == .suspended)) {
-            RunLoop.current.run(mode: .defaultRunLoopMode, before: (Date() + 0.5))
-        }*/
-        self.requestWorkingDispatchGroup.wait()
+         self.requestWorkingDispatchGroup.wait()
     }
     
     internal static func createCancelationError(forURL url: URL) -> Error {
