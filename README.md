@@ -144,7 +144,7 @@ request.waitUntilComplete() //Lets wait until all requests have completed.  No g
 Download Web Request
 
 Note: due to compatibility issues with OpenSwift < 4.1.4 session.downloadTask not working 
-A workaround is put in place by usingthe session.dataTask that mimics the process.
+A workaround is put in place by using the session.dataTask that mimics the process.
 ```Swift
 let session = URLSession(configuration: URLSessionConfiguration.default)
 let request = WebRequest.DownloadRequest(URL(string: "http://.....")!, usingSession: session) { r in 
