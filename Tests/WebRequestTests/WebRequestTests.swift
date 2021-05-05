@@ -50,25 +50,26 @@ extension URL {
 }
 
 final class WebRequestTests: XCTestCase {
-    static var testServerPort: Int = 0
+    static var server: HttpServer!
     
     static let testServerHost: String = "127.0.0.1"
-    static var testURLBase: URL { return URL(string: "http://\(testServerHost):\(testServerPort)")! }
+    
+    static var testURLBase: URL {
+        return URL(string: "http://\(testServerHost):\(try! WebRequestTests.server.port())")!
+    }
     static var testURLSearch: URL { return URL(string: "/search", relativeTo: testURLBase)! }
     
     static var uploadedData: [String: Data] = [:]
-    static var server: HttpServer?
+    
     
     var testURLBase: URL { return WebRequestTests.testURLBase }
     var testURLSearch: URL { return WebRequestTests.testURLSearch }
     
     
-    
-    
-    
     override class func setUp() {
         super.setUp()
         
+       
         WebRequestTests.server = HttpServer()
         WebRequestTests.server?["/search"] = { request -> HttpResponse in
             let initialValue = "Query"
@@ -85,11 +86,37 @@ final class WebRequestTests: XCTestCase {
                 
                 rtn += "start=" + param.1
             }
-            //print("[\(request.path)] Responding to request with '\(rtn)'")
+            
             return .ok(.text(rtn))
         }
         
+        WebRequestTests.server?["/events"] = { request -> HttpResponse in
+            
+            return .raw(200, "OK", nil) { writer in
+                var count: Int = 1
+                while (WebRequestTests.server?.operating ?? false) && count < 100 {
+                    let eventData = "{ \"event_type\": \"system\", \"event_count\": \(count), \"event_up\": true }\n"
+                    count += 1
+                    //let dta = eventData.data(using: .utf8)!
+                    
+                    do {
+                        try writer.write(eventData.data(using: .utf8)!)
+                        
+                        print("Sent event: \(count - 1)")
+                    } catch {
+                        XCTFail("ON NO: \(error)")
+                        break
+                    }
+                }
+            }
+        }
+        
+        
+        #if swift(>=5.3)
+        let webRequestTestFolder = NSString(string: "\(#filePath)").deletingLastPathComponent
+        #else
         let webRequestTestFolder = NSString(string: "\(#file)").deletingLastPathComponent
+        #endif
         print("Sharing folder '\(webRequestTestFolder)' at '/testfiles'")
         WebRequestTests.server?.get["/testfiles/:path"] = shareFilesFromDirectory(webRequestTestFolder)
         WebRequestTests.server?.post["/upload"] = { request -> HttpResponse in
@@ -105,12 +132,12 @@ final class WebRequestTests: XCTestCase {
         }
         
         WebRequestTests.server?.listenAddressIPv4 = "127.0.0.1"
-        try!  WebRequestTests.server?.start(in_port_t(WebRequestTests.testServerPort),
+        
+        try!  WebRequestTests.server?.start(in_port_t(0),
                                             forceIPv4: true)
         
         /// We re-assign the test server port because if it was originally 0 then a randomly selected available port will be used
-        WebRequestTests.testServerPort = (try! WebRequestTests.server!.port())
-        print("Running on port \(WebRequestTests.testServerPort)")
+        print("Running on port \((try! WebRequestTests.server!.port()))")
         
         print("Server started")
     }
@@ -153,7 +180,6 @@ final class WebRequestTests: XCTestCase {
         }
         //print("Starting request")
         request.resume()
-        //request.cancel()
         //print("Waiting for request to finish")
         request.waitUntilComplete()
         sig.wait()
@@ -217,7 +243,6 @@ final class WebRequestTests: XCTestCase {
             print("Finished [\(i)] \(request.originalRequest!.url!.absoluteString) - \(responseCode) - \(request.state) - Size: \(responseSize)")
         }
         request.resume()
-        //request.cancel()
         request.waitUntilComplete()
         sig.wait()
     }
@@ -323,7 +348,6 @@ final class WebRequestTests: XCTestCase {
             print("[\(repeatCount)] - \(results.originalURL!.absoluteString) - Finished")
             if repeatCount < 5 { return WebRequest.RepeatedDataRequest<Void>.RepeatResults.repeat }
             else { return WebRequest.RepeatedDataRequest<Void>.RepeatResults.results(nil) }
-            //return (repeat: rep, results: results)
         }
         let session = URLSession(configuration: URLSessionConfiguration.default)
         let req = testURLSearch
@@ -341,6 +365,7 @@ final class WebRequestTests: XCTestCase {
         
         
     }
+    
     /*
     // Long repeat request to monitor memory usage
     func testRepeatRequestLong() {
@@ -378,37 +403,6 @@ final class WebRequestTests: XCTestCase {
         sig.wait()
         
         
-    }
-    
-    func testRepeatRequestLongIndividual() {
-        let urlSession = URLSession.shared
-        while true {
-            let sig = DispatchSemaphore(value: 0)
-            
-            let wr = WebRequest.DataRequest(testURLSearch, usingSession: urlSession) { _ in
-                sig.signal()
-            }
-            wr.resume()
-            
-            sig.wait()
-            wr.emptyResultsData()
-            Thread.sleep(forTimeInterval: 1)
-        }
-    }
-    
-    func testRepeatRequestLongDataTask() {
-        let urlSession = URLSession.shared
-        while true {
-            let sig = DispatchSemaphore(value: 0)
-            
-            let task = urlSession.dataTask(with: testURLSearch) { _, _, _ in
-                sig.signal()
-            }
-            task.resume()
-            
-            sig.wait()
-            Thread.sleep(forTimeInterval: 1)
-        }
     }
     */
     
@@ -563,8 +557,6 @@ final class WebRequestTests: XCTestCase {
         let downloadFileURL = testURLBase
             .appendingPathComponent("/testfiles")
             .appendingPathComponent(fileName)
-        //let downloadFileURL = URL(string: "https://github.com/TheAngryDarling/SwiftWebRequest/archive/1.0.0.zip")!
-        
         
         let sig = DispatchSemaphore(value: 0)
         let session = URLSession(configuration: URLSessionConfiguration.default)
@@ -591,7 +583,6 @@ final class WebRequestTests: XCTestCase {
         }
         
         request.resume()
-        //request.cancel()
         request.waitUntilComplete()
         sig.wait()
         
@@ -630,11 +621,47 @@ final class WebRequestTests: XCTestCase {
             sig.signal()
         }
         request.resume()
-        //request.cancel()
         request.waitUntilComplete()
         sig.wait()
     }
     
+    func testStreamedEvents() {
+        
+        let eventsURL = testURLBase.appendingPathComponent("/events")
+        
+        let session = URLSession(configuration: URLSessionConfiguration.default)
+        
+        
+        
+        let eventRequest = URLRequest(url: eventsURL,
+                                      cachePolicy: .reloadIgnoringLocalAndRemoteCacheData,
+                                      timeoutInterval: .infinity)
+        
+        print("Starting to stream events from '\(eventsURL.absoluteString)'")
+        var didReceiveEvent: Bool = false
+        let request = WebRequest.DataRequest(eventRequest, usingSession: session)
+        request.addDidReceiveDataHandler { _, dataRequest, data in
+            didReceiveEvent = true
+            guard let str = String(data: data, encoding: .utf8) else {
+                XCTFail("Failed to convert data to string")
+                return
+            }
+            print(str, terminator: "")
+        }
+        
+        let timeout: TimeInterval = 20
+        
+        let waitQueue = DispatchQueue(label: "EventRequestWait")
+        waitQueue.async {
+            // we want to let the events to stream for a while before we cancel the request to stop the stream
+            Thread.sleep(forTimeInterval: timeout)
+            print("Stopping request")
+            request.cancel()
+        }
+        request.resume()
+        request.waitUntilComplete()
+        XCTAssert(didReceiveEvent, "No events were received")
+    }
     
     #if _runtime(_ObjC)
     func testEncodingNames() {
@@ -1482,6 +1509,7 @@ final class WebRequestTests: XCTestCase {
         ("testRepeatRequestUpdateURL", testRepeatRequestUpdateURL),
         ("testRepeatRequestUpdateURLCancelled", testRepeatRequestUpdateURLCancelled),
         ("testDownloadFile", testDownloadFile),
-        ("testUploadFile", testUploadFile)
+        ("testUploadFile", testUploadFile),
+        ("testStreamedEvents", testStreamedEvents)
     ]
 }
