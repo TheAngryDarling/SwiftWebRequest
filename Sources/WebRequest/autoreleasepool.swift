@@ -7,8 +7,9 @@
 
 import Foundation
 
-#if !_runtime(_ObjC) && (!swift(>=4.2) || swift(>=5.0.3))
+#if !_runtime(_ObjC)
 public func autoreleasepool<Result>(invoking body: () throws -> Result) rethrows -> Result {
     return try body()
 }
 #endif
+
