@@ -39,6 +39,7 @@ public extension WebRequest {
             let session = URLSession(copy: session(),
                                      delegate: eventDelegate)
             super.init(session.uploadTask(with: req, from: bodyData),
+                       session: session,
                        eventDelegate: eventDelegate,
                        completionHandler: completionHandler)
         }
@@ -77,15 +78,13 @@ public extension WebRequest {
                "GET" == req.httpMethod?.uppercased() {
                 req.httpMethod = "POST"
             }
-            let originalSession = session()
-            
             let eventDelegate = URLSessionDataTaskEventHandler()
             
             
-            let session = URLSession(configuration: originalSession.configuration,
-                                     delegate: eventDelegate,
-                                     delegateQueue: originalSession.delegateQueue)
+            let session = URLSession(copy: session(),
+                                     delegate: eventDelegate)
             super.init(session.uploadTask(with: req, fromFile: fileURL),
+                       session: session,
                        eventDelegate: eventDelegate,
                        completionHandler: completionHandler)
         }
@@ -115,15 +114,14 @@ public extension WebRequest {
         ///   - completionHandler: The call back when done executing
         public init(withStreamedRequest request: URLRequest,
                     usingSession session: @autoclosure () -> URLSession) {
-            let originalSession = session()
             
             let eventDelegate = URLSessionDataTaskEventHandler()
             
             
-            let session = URLSession(configuration: originalSession.configuration,
-                                     delegate: eventDelegate,
-                                     delegateQueue: originalSession.delegateQueue)
+            let session = URLSession(copy: session(),
+                                     delegate: eventDelegate)
             super.init(session.uploadTask(withStreamedRequest: request),
+                       session: session,
                        eventDelegate: eventDelegate)
         }
     }

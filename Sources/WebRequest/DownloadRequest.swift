@@ -273,6 +273,7 @@ public extension WebRequest {
             #endif
             
             super.init(task,
+                       session: session,
                        eventDelegate: delegate,
                        //originalRequest: req,
                        completionHandler: completionHandler)

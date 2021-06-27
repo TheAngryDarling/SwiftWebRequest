@@ -28,6 +28,7 @@ public extension WebRequest {
                       eventDelegate: URLSessionDataTaskEventHandler,
                       completionHandler: ((Results) -> Void)? = nil) {
             super.init(session.dataTask(with: request()),
+                       session: nil,
                        eventDelegate: eventDelegate,
                        completionHandler: completionHandler)
         }
@@ -51,6 +52,7 @@ public extension WebRequest {
                                      delegate: eventDelegate)
             
             super.init(session.dataTask(with: request()),
+                       session: session,
                        eventDelegate: eventDelegate,
                        completionHandler: completionHandler)
             
