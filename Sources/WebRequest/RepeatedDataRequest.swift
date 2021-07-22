@@ -314,6 +314,24 @@ public extension WebRequest {
             self.webRequest = nil
         }
         
+        
+        /// Schedule the next request creation on a dispatch queue
+        /// - Parameters:
+        ///   - deadline: The time when to schedule the creation of the new request. (eg: .now() + ...)
+        ///   - queue: The Dispatch Queue to create the new new request on
+        private func scheduleNewRequest(deadline: DispatchTime,
+                                        in queue: DispatchQueue = .global()) {
+            queue.asyncAfter(deadline: deadline) { [weak self] in
+                guard let s = self else { return }
+                guard s.state == .running else { return }
+                
+                s.repeatCount += 1
+                s.createRequest(repeatCount: s.repeatCount)
+            }
+        }
+        
+        /// Create and execute a request
+        /// - Parameter repeatCount: The current repeat count
         private func createRequest(repeatCount: Int) {
             
             self.currentRequest =  {
@@ -336,17 +354,17 @@ public extension WebRequest {
                                           usingSession: self.session,
                                           eventDelegate: self.delegate) {  [weak self] requestResults in
                 
-                guard self != nil else { return }
+                guard let currentSelf = self else { return }
                 
                 // Empty out links/data for current data request
-                if let observer = self?.notificationCenterObserver {
+                if let observer = currentSelf.notificationCenterObserver {
                     // Stop observing old request
                     NotificationCenter.default.removeObserver(observer)
-                    self?.notificationCenterObserver = nil
+                    currentSelf.notificationCenterObserver = nil
                 }
                 // Empty old request data
-                self?.webRequest?.emptyResultsData()
-                self?.webRequest = nil
+                currentSelf.webRequest?.emptyResultsData()
+                currentSelf.webRequest = nil
                 
                 
                 // Get response error if any
@@ -355,9 +373,9 @@ public extension WebRequest {
                 var results: T? = nil
                 if shouldContinue { //If we are ok to continue so far we should call repeatHandler
                     do {
-                        if let f = self?.repeatHandler {
+                        if let f = currentSelf.repeatHandler {
                             //Call repeat handler
-                            let r = try f(self!, requestResults, self!.repeatCount)
+                            let r = try f(currentSelf, requestResults, currentSelf.repeatCount)
                             shouldContinue = r.shouldRepeat
                             if !shouldContinue { results = r.finishedResults }
                             //results = r.results
@@ -374,29 +392,21 @@ public extension WebRequest {
                 if shouldContinue {
                     // If we should repeat, then setup new block for execution in repeat interval.
                     // Tried using a Timer but it wouldn't execute so changed to DispatchQueue
-                    if let s = self {
-                        let t = DispatchTime.now() + s.repeatInterval
-                        DispatchQueue.global().asyncAfter(deadline: t) { [weak self] in
-                            guard let s = self else { return }
-                            guard s.state == .running else { return }
-                            
-                            s.repeatCount += 1
-                            s.createRequest(repeatCount: s.repeatCount)
-                        }
-                    }
+                    currentSelf.scheduleNewRequest(deadline: .now() + currentSelf.repeatInterval)
+                    
                 } else {
                     
-                    let finishState = (self?.webRequest?.state ?? .completed)
-                    self?._state = finishState
-                    self?._error = err
+                    let finishState = (currentSelf.webRequest?.state ?? .completed)
+                    currentSelf._state = finishState
+                    currentSelf._error = err
                     // We are no longer repeating.  Lets trigger the proper event handlers.
-                    self?.triggerStateChange(finishState)
-                    self?.completionHandlerLockingQueue.sync {
-                        self?.hasCalledCompletionHandler = true
+                    currentSelf.triggerStateChange(finishState)
+                    currentSelf.completionHandlerLockingQueue.sync {
+                        currentSelf.hasCalledCompletionHandler = true
                     }
-                    if let handler = self?.completionHandler {
+                    if let handler = currentSelf.completionHandler {
                         /// was async
-                        self?.callSyncEventHandler {
+                        currentSelf.callSyncEventHandler {
                             handler(requestResults, results, err)
                         }
                     }
