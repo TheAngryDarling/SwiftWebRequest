@@ -41,4 +41,22 @@ internal extension Array {
         return rtn
     }
     #endif
+    #if !swift(>=4.2)
+    func allSatisfy(_ predicate: (Element) throws -> Bool) rethrows -> Bool {
+        for element in self {
+            if !(try predicate(element)) { return false }
+        }
+        return true
+    }
+    #endif
+}
+internal extension Array where Element: Equatable {
+    #if !swift(>=5.0)
+    func firstIndex(of element: Element) -> Index? {
+        for (index, e) in self.enumerated() {
+            if e == element { return index }
+        }
+        return nil
+    }
+    #endif
 }
