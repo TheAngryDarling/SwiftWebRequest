@@ -129,7 +129,7 @@ final class WebRequestTests: XCTestCase {
                     //let dta = eventData.data(using: .utf8)!
                     
                     do {
-                        try autoreleasepool {
+                        try WebRequest.autoreleasepool {
                             let coutData = "\(count)".data(using: .utf8)!
                             try output.write( eventPrefixData + coutData + eventSuffixData)
                             /*try output.write(eventPrefixData)

@@ -194,7 +194,7 @@ public extension WebRequest {
                                  didCompleteWithError error: Error?) {
             
             for (_, handler) in self.completionHandler {
-                autoreleasepool {
+                WebRequest.autoreleasepool {
                     handler(self.taskResults[task.taskIdentifier], task.response, error)
                 }
             }

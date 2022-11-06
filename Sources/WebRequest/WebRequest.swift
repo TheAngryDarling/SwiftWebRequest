@@ -196,3 +196,17 @@ open class WebRequest: NSObject {
     }
 }
 
+// Providing internal autoreleasepool to not conflict with
+// external resources
+internal extension WebRequest {
+    #if _runtime(_ObjC)
+    static func autoreleasepool<Result>(invoking body: () throws -> Result) rethrows -> Result {
+        return try ObjectiveC.autoreleasepool(invoking: body)
+    }
+    #else
+    static func autoreleasepool<Result>(invoking body: () throws -> Result) rethrows -> Result {
+        return try body()
+    }
+    #endif
+}
+
