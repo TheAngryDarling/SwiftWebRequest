@@ -1,6 +1,6 @@
 import XCTest
 import Dispatch
-import Swifter
+import LittleWebServer
 @testable import WebRequest
 #if swift(>=4.1)
     #if canImport(FoundationXML)
@@ -8,17 +8,6 @@ import Swifter
     #endif
 #endif
 
-
-#if !swift(>=4.2)
-extension Array {
-    func firstIndex(where predicate: (Element) throws -> Bool) rethrows -> Index? {
-        for (index, element) in self.enumerated() {
-            if try predicate(element) { return index }
-        }
-        return nil
-    }
-}
-#endif
 
 extension URL {
     func appendingQueryItem(_ name: String, withValue value: String) -> URL {
@@ -50,13 +39,20 @@ extension URL {
 }
 
 final class WebRequestTests: XCTestCase {
-    static var server: HttpServer!
+    static var server: LittleWebServer!
     
-    static let testServerHost: String = "127.0.0.1"
-    
-    static var testURLBase: URL {
-        return URL(string: "http://\(testServerHost):\(try! WebRequestTests.server.port())")!
+    public static var testURLBase: URL {
+        
+        var urlBase = self.server.listeners.first(as: LittleWebServerTCPIPListener.self)!.url
+        if urlBase.host == "0.0.0.0" {
+            var urlString = urlBase.absoluteString
+            urlString = urlString.replacingOccurrences(of: "0.0.0.0", with: "127.0.0.1")
+            urlBase = URL(string: urlString)!
+        }
+        
+        return urlBase
     }
+    
     static var testURLSearch: URL { return URL(string: "/search", relativeTo: testURLBase)! }
     
     static var uploadedData: [String: Data] = [:]
@@ -69,46 +65,98 @@ final class WebRequestTests: XCTestCase {
     override class func setUp() {
         super.setUp()
         
-       
-        WebRequestTests.server = HttpServer()
-        WebRequestTests.server?["/search"] = { request -> HttpResponse in
+        var retryCount: Int = 0
+        var retry: Bool = true
+        repeat {
+            do {
+                let listener = try LittleWebServerHTTPListener(specificIP: .anyIPv4,
+                                                               port: .firstAvailable,
+                                                               reuseAddr: true,
+                                                               maxBacklogSize: LittleWebServerSocketListener.DEFAULT_MAX_BACK_LOG_SIZE,
+                                                               enablePortSharing: true)
+                
+                WebRequestTests.server = LittleWebServer(listener)
+                retry = false
+            } catch LittleWebServerSocketConnection.SocketError.socketBindFailed(let error) {
+                if let sysError = error as? LittleWebServerSocketSystemError,
+                   sysError == .addressAlreadyInUse && retryCount < 3 {
+                    retryCount += 1
+                } else {
+                    print("Failed to create listener: \(error)")
+                    retry = false
+                }
+            } catch {
+                print("Failed to create listener: \(error)")
+                retry = false
+            }
+        } while retry
+        
+        
+        WebRequestTests.server?.defaultHost["/search"] = {
+            (request: LittleWebServer.HTTP.Request) -> LittleWebServer.HTTP.Response in
             let initialValue = "Query"
             var rtn: String = initialValue
-            if let param = request.queryParams.first(where: { $0.0 == "q" }) {
-                if rtn == initialValue { rtn += "?" }
-                else { rtn += "&"}
-                
-                rtn += "q=" + param.1
-            }
-            if let param = request.queryParams.first(where: { $0.0 == "start" }) {
-                if rtn == initialValue { rtn += "?" }
-                else { rtn += "&"}
-                
-                rtn += "start=" + param.1
-            }
             
-            return .ok(.text(rtn))
+            if let param = request.queryItems.first(where: { return $0.name == "q" }) {
+                if rtn == initialValue { rtn += "?" }
+                else { rtn += "&"}
+                
+                rtn += "q=" + (param.value ?? "")
+            }
+            if let param = request.queryItems.first(where: { return $0.name == "start" }) {
+                if rtn == initialValue { rtn += "?" }
+                else { rtn += "&"}
+                
+                rtn += "start=" + (param.value ?? "")
+            }
+            return .ok(body: .plainText(rtn))
         }
         
-        WebRequestTests.server?["/events"] = { request -> HttpResponse in
+        let eventPrefixData = "{ \"event_type\": \"system\", \"event_count\": ".data(using: .utf8)!
+        let eventSuffixData = ", \"event_up\": true }\n".data(using: .utf8)!
+        
+        WebRequestTests.server?.defaultHost["/events"] = { (request: LittleWebServer.HTTP.Request) -> LittleWebServer.HTTP.Response in
             
-            return .raw(200, "OK", nil) { writer in
-                var count: Int = 1
-                while (WebRequestTests.server?.operating ?? false) && count < 100 {
-                    let eventData = "{ \"event_type\": \"system\", \"event_count\": \(count), \"event_up\": true }\n"
+            func eventWriter(_ input: LittleWebServerInputStream, _ output: LittleWebServerOutputStream) {
+                var count: Int = 0
+                let macCount: Int = 100 /*Int.max / * 100 */
+                let startDate = Date()
+                while self.server.isRunning &&
+                      output.isConnected &&
+                      count < macCount {
+                    
                     count += 1
                     //let dta = eventData.data(using: .utf8)!
                     
                     do {
-                        try writer.write(eventData.data(using: .utf8)!)
+                        try autoreleasepool {
+                            let coutData = "\(count)".data(using: .utf8)!
+                            try output.write( eventPrefixData + coutData + eventSuffixData)
+                            /*try output.write(eventPrefixData)
+                            try output.write("\(count)".data(using: .utf8)!)
+                            try output.write(eventSuffixData)*/
+                        }
                         
-                        print("Sent event: \(count - 1)")
+                        //print("[\(self.testId)]: Sent event: \(count - 1)")
                     } catch {
-                        XCTFail("ON NO: \(error)")
+                        if output.isConnected {
+                            XCTFail("OH NO: \(error)")
+                        }
                         break
                     }
+                    //Thread.sleep(forTimeInterval: 0.05)
                 }
+                if output.isConnected {
+                    // If we're still connected we send a 0 byte line
+                    // to indicate that response has ended
+                    try? output.write([])
+                }
+                let endDate = Date()
+                let duration = endDate.timeIntervalSince(startDate)
+                print("Server wrote events for \(duration)")
             }
+            
+            return .ok(body: .custom(eventWriter))
         }
         
         
@@ -118,28 +166,36 @@ final class WebRequestTests: XCTestCase {
         let webRequestTestFolder = NSString(string: "\(#file)").deletingLastPathComponent
         #endif
         print("Sharing folder '\(webRequestTestFolder)' at '/testfiles'")
-        WebRequestTests.server?.get["/testfiles/:path"] = shareFilesFromDirectory(webRequestTestFolder)
-        WebRequestTests.server?.post["/upload"] = { request -> HttpResponse in
-            let multiParts = request.parseMultiPartFormData()
-            if multiParts.count > 0 {
-                for multipart in request.parseMultiPartFormData() {
-                    uploadedData[multipart.name ?? ""] = Data(multipart.body)
+        self.server?.defaultHost.get["/testfiles/"] = LittleWebServer.FSSharing.share(resource: URL(fileURLWithPath: webRequestTestFolder))
+        
+        self.server?.defaultHost.post["/upload"] = { (request: LittleWebServer.HTTP.Request,
+                                                     routeController: LittleWebServer.Routing.Requests.RouteController) -> LittleWebServer.HTTP.Response in
+            do {
+                if request.uploadedFiles.count > 0 {
+                    for file in request.uploadedFiles {
+                        self.uploadedData[file.path] = try Data.init(contentsOf: file.location)
+                    }
+                } else if let contentLength = request.contentLength,
+                          contentLength > 0 {
+                    self.uploadedData[""] = try request.inputStream.read(exactly: Int(contentLength))
                 }
-            } else {
-                uploadedData[""] = Data(request.body)
+                return .ok(body: .empty)
+            } catch {
+                return routeController.internalError(for: request,
+                                                     error: error,
+                                                     message: "Failed to load uploaded data")
             }
-            return .ok(.html(""))
         }
         
-        WebRequestTests.server?.listenAddressIPv4 = "127.0.0.1"
-        
-        try!  WebRequestTests.server?.start(in_port_t(0),
-                                            forceIPv4: true)
         
         /// We re-assign the test server port because if it was originally 0 then a randomly selected available port will be used
-        print("Running on port \((try! WebRequestTests.server!.port()))")
-        
-        print("Server started")
+        //print("Running on port \((try! WebRequestTests.server!))")
+        do {
+            try WebRequestTests.server?.start()
+            print("Server started")
+        } catch {
+            print("Failed to start server")
+        }
     }
     override class func tearDown() {
         print("Stopping server")

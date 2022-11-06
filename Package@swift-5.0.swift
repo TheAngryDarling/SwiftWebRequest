@@ -12,7 +12,8 @@ let package = Package(
             targets: ["WebRequest"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/httpswift/swifter.git", .exact("1.4.5"))
+        .package(url: "https://github.com/TheAngryDarling/SwiftLittleWebServer.git",
+                 .exact( "0.1.6")),
     ],
     targets: [
         // Targets are the basic building blocks of a package. A target can define a module or a test suite.
@@ -22,6 +23,6 @@ let package = Package(
             dependencies: []),
         .testTarget(
             name: "WebRequestTests",
-            dependencies: ["WebRequest", "Swifter"]),
+            dependencies: ["WebRequest", "LittleWebServer"]),
     ]
 )
