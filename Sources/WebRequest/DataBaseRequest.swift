@@ -16,8 +16,6 @@ public extension WebRequest {
     /// Allows for a single data web request
     class DataBaseRequest: TaskedWebRequest<Data> {
         
-        public typealias Results = TaskedWebRequestResults<Data>
-        
         internal class URLSessionDataTaskEventHandler: URLSessionTaskEventHandlerWithCompletionHandler<Data>,
                                                        URLSessionDataDelegate {
             

@@ -239,6 +239,9 @@ public extension WebRequest {
     
     /// Results container for request response
     struct TaskedWebRequestResults<Results> where Results: TaskedWebRequestResultsContainer {
+        /// Represents the generate type used as the results of the request operation (like Data, URL)
+        public typealias ResultsType = Results
+        
         public let request: URLRequest
         public let response: URLResponse?
         public let error: Error?
@@ -274,15 +277,16 @@ public extension WebRequest {
     
     class TaskedWebRequest<CompletionResults>: WebRequest where CompletionResults: TaskedWebRequestResultsContainer {
         
-        
+        /// TypeAlias defining the Results of the request(TaskedWebRequestResults) to a specific result type
+        public typealias Results = TaskedWebRequestResults<CompletionResults>
         
         private var task: URLSessionTask! = nil
         private weak var session: URLSession?
         
         /// Results from the request
-        internal var _results: TaskedWebRequestResults<CompletionResults>? = nil
-        public var results: TaskedWebRequestResults<CompletionResults> {
-            return _results ?? TaskedWebRequestResults<CompletionResults>(request: self.originalRequest!)
+        internal var _results: Results? = nil
+        public var results: Results {
+            return _results ?? Results(request: self.originalRequest!)
         }
         
         public override var state: WebRequest.State {
@@ -355,7 +359,7 @@ public extension WebRequest {
         internal init(_ task: URLSessionTask,
                       session: URLSession?,
                       eventDelegate: URLSessionTaskEventHandlerWithCompletionHandler<CompletionResults>,
-                      completionHandler: ((TaskedWebRequestResults<CompletionResults>) -> Void)? = nil) {
+                      completionHandler: ((Results) -> Void)? = nil) {
             //print("Creating Tasked Request")
             self.task = task
             self.session = session
