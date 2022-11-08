@@ -28,9 +28,9 @@ public extension WebRequest {
                     usingSession session: @autoclosure () -> URLSession,
                     completionHandler: ((Results) -> Void)? = nil) {
             var req = request()
-            if req.httpMethod == nil ||
-               "GET" == req.httpMethod?.uppercased() {
-                req.httpMethod = "POST"
+            if req._httpMethod == nil ||
+                req._httpMethod == .get {
+                req._httpMethod = .post
             }
             
             let eventDelegate = URLSessionDataTaskEventHandler()
@@ -74,10 +74,11 @@ public extension WebRequest {
                     completionHandler: ((Results) -> Void)? = nil) {
             var req = request()
             
-            if req.httpMethod == nil ||
-               "GET" == req.httpMethod?.uppercased() {
-                req.httpMethod = "POST"
+            if req._httpMethod == nil ||
+                req._httpMethod == .get {
+                req._httpMethod = .post
             }
+            
             let eventDelegate = URLSessionDataTaskEventHandler()
             
             
