@@ -153,7 +153,9 @@ final class WebRequestTests: XCTestCase {
                 }
                 let endDate = Date()
                 let duration = endDate.timeIntervalSince(startDate)
+                #if !DOCKER_ALL_BUILD
                 print("Server wrote events for \(duration)")
+                #endif
             }
             
             return .ok(body: .custom(eventWriter))
@@ -263,7 +265,9 @@ final class WebRequestTests: XCTestCase {
         let request = WebRequest.GroupRequest(requests,
                                               usingSession: session,
                                               maxConcurrentRequests: 5) { rA in
+            #if !DOCKER_ALL_BUILD
             print("Finished grouped request")
+            #endif
             for (i, r) in rA.enumerated() {
                 guard let request = r as? WebRequest.DataRequest else {
                     XCTFail("[\(i)] Expected 'WebRequest.DataRequest' but found '\(type(of: r))'")
@@ -279,24 +283,31 @@ final class WebRequestTests: XCTestCase {
                 var testCase: String = "Query?q=Swift"
                 if i > 0 { testCase += "&start=\(i * 10)" }
                 XCTAssertEqual(responseString, testCase, "[\(i)]: Expected response to match")
-                
+                #if !DOCKER_ALL_BUILD
                 print(responseLine)
                 fflush(stdout)
+                #endif
             }
             sig.signal()
         }
         request.requestStarted = { r in
+            #if !DOCKER_ALL_BUILD
             print("Starting grouped request")
+            #endif
         }
         request.singleRequestStarted = { gR, i, r in
             guard let request = r as? WebRequest.DataRequest else { return }
+            #if !DOCKER_ALL_BUILD
             print("Staring [\(i)] \(request.originalRequest!.url!.absoluteString)")
+            #endif
         }
         request.singleRequestCompleted = { gR, i, r in
             guard let request = r as? WebRequest.DataRequest else { return }
             let responseSize = request.results.data?.count ?? 0
             let responseCode = (request.response as? HTTPURLResponse)?.statusCode ?? 0
+            #if !DOCKER_ALL_BUILD
             print("Finished [\(i)] \(request.originalRequest!.url!.absoluteString) - \(responseCode) - \(request.state) - Size: \(responseSize)")
+            #endif
         }
         request.resume()
         request.waitUntilComplete()
@@ -325,13 +336,14 @@ final class WebRequestTests: XCTestCase {
             var testCase: String = "Query?q=Swift"
             if i > 0 { testCase += "&start=\(i * 10)" }
             XCTAssertEqual(responseString, testCase, "[\(i)]: Expected response to match")
-            
+            #if !DOCKER_ALL_BUILD
             print("[\(i)] \(request.originalRequest!.url!.absoluteString) - \((request.response as! HTTPURLResponse).statusCode)")
             let preClearData = (request.results.data != nil) ? "\(request.results.data!)" : "nil"
             print("[\(i)] \(request.originalRequest!.url!.absoluteString) - \(preClearData)")
             request.emptyResultsData()
             let postClearData = (request.results.data != nil) ? "\(request.results.data!)" : "nil"
             print("[\(i)] \(request.originalRequest!.url!.absoluteString) - \(postClearData)")
+            #endif
             
             fflush(stdout)
         }
@@ -359,7 +371,9 @@ final class WebRequestTests: XCTestCase {
                                                maxConcurrentRequests: 1)
         request.singleRequestStarted = {gR, i, r in
              guard let request = r as? WebRequest.DataRequest else { return }
+             #if !DOCKER_ALL_BUILD
              print("[\(i)] \(request.originalRequest!.url!.absoluteString) - Started")
+             #endif
         }
         request.singleRequestCompleted = {gR, i, r in
             guard let request = r as? WebRequest.DataRequest else { return }
@@ -371,7 +385,7 @@ final class WebRequestTests: XCTestCase {
             var testCase: String = "Query?q=Swift"
             if i > 0 { testCase += "&start=\(i * 10)" }
             XCTAssertEqual(responseString, testCase, "[\(i)]: Expected response to match")
-            
+            #if !DOCKER_ALL_BUILD
             print("[\(i)] \(request.originalRequest!.url!.absoluteString) - \((request.response as! HTTPURLResponse).statusCode)")
             let preClearData = (request.results.data != nil) ? "\(request.results.data!)" : "nil"
             print("[\(i)] \(request.originalRequest!.url!.absoluteString) - \(preClearData)")
@@ -379,6 +393,7 @@ final class WebRequestTests: XCTestCase {
             let postClearData = (request.results.data != nil) ? "\(request.results.data!)" : "nil"
             print("[\(i)] \(request.originalRequest!.url!.absoluteString) - \(postClearData)")
             fflush(stdout)
+            #endif
         }
         request.requestCompleted = { _ in
             sig.signal()
@@ -400,8 +415,9 @@ final class WebRequestTests: XCTestCase {
                 XCTFail("[\(repeatCount)]: Unable to convert resposne into string: \(results.data as Any)")
             }
            
-            
+            #if !DOCKER_ALL_BUILD
             print("[\(repeatCount)] - \(results.originalURL!.absoluteString) - Finished")
+            #endif
             if repeatCount < 5 { return WebRequest.RepeatedDataRequest<Void>.RepeatResults.repeat }
             else { return WebRequest.RepeatedDataRequest<Void>.RepeatResults.results(nil) }
         }
@@ -410,8 +426,9 @@ final class WebRequestTests: XCTestCase {
         let sig = DispatchSemaphore(value: 0)
         let r = WebRequest.RepeatedDataRequest<Void>(req, usingSession: session, repeatHandler: repeatHandler) { rs, r, e in
             
-            
+            #if !DOCKER_ALL_BUILD
             print("All Done!")
+            #endif
             
              sig.signal()
         }
@@ -472,8 +489,9 @@ final class WebRequestTests: XCTestCase {
             } else {
                 XCTFail("[\(repeatCount)]: Unable to convert resposne into string: \(results.data as Any)")
             }
-            
+            #if !DOCKER_ALL_BUILD
             print("[\(repeatCount)] - \(results.originalURL!.absoluteString) - Finished")
+            #endif
             if repeatCount == 3 { request.cancel() }
             if repeatCount < 5 { return WebRequest.RepeatedDataRequest<Void>.RepeatResults.repeat }
             else { return WebRequest.RepeatedDataRequest<Void>.RepeatResults.results(nil) }
@@ -485,9 +503,9 @@ final class WebRequestTests: XCTestCase {
         let r = WebRequest.RepeatedDataRequest<Void>(req,
                                                      usingSession: session,
                                                      repeatHandler: repeatHandler) { rs, r, e in
-            
+            #if !DOCKER_ALL_BUILD
             print("All Done!")
-            
+            #endif
             
             sig.signal()
         }
@@ -509,8 +527,9 @@ final class WebRequestTests: XCTestCase {
                 
                 XCTFail("[\(repeatCount)]: Unable to convert resposne into string: \(results.data as Any) - error: \(results.error as Any)")
             }
-            
+            #if !DOCKER_ALL_BUILD
             print("[\(repeatCount)] - \(results.originalURL!.absoluteString) - Finished")
+            #endif
             if repeatCount < 5 { return WebRequest.RepeatedDataRequest<Void>.RepeatResults.repeat }
             else { return WebRequest.RepeatedDataRequest<Void>.RepeatResults.results(nil) }
             //return (repeat: rep, results: results)
@@ -538,9 +557,9 @@ final class WebRequestTests: XCTestCase {
                                                  usingSession: session,
                                                  repeatHandler: repeatHandler) { rs, r, e in
             
-            
+            #if !DOCKER_ALL_BUILD
             print("All Done!")
-            
+            #endif
              sig.signal()
         }
         
@@ -563,8 +582,9 @@ final class WebRequestTests: XCTestCase {
             } else {
                 XCTFail("[\(repeatCount)]: Unable to convert resposne into string: \(results.data as Any)")
             }
-            
+            #if !DOCKER_ALL_BUILD
             print("[\(repeatCount)] - \(results.originalURL!.absoluteString) - Finished")
+            #endif
             if repeatCount == 3 { request.cancel() }
             if repeatCount < 5 { return WebRequest.RepeatedDataRequest<Void>.RepeatResults.repeat }
             else { return WebRequest.RepeatedDataRequest<Void>.RepeatResults.results(nil) }
@@ -594,9 +614,9 @@ final class WebRequestTests: XCTestCase {
                                                  usingSession: session,
                                                  repeatHandler: repeatHandler) { rs, r, e in
             
-            
+            #if !DOCKER_ALL_BUILD
             print("All Done!")
-            
+            #endif
              sig.signal()
         }
         
@@ -616,7 +636,9 @@ final class WebRequestTests: XCTestCase {
         
         let sig = DispatchSemaphore(value: 0)
         let session = URLSession(configuration: URLSessionConfiguration.default)
+        #if !DOCKER_ALL_BUILD
         print("Trying to download '\(downloadFileURL.absoluteString)'")
+        #endif
         
         let request = WebRequest.DownloadRequest(downloadFileURL, usingSession: session) { r in
             XCTAssertNil(r.error, "Expected no Error but found '\(r.error as Any)'")
@@ -625,9 +647,9 @@ final class WebRequestTests: XCTestCase {
                 sig.signal()
                 return
             }
-            
+            #if !DOCKER_ALL_BUILD
             print("Download Location: '\(downloadLocation.absoluteString)'")
-            
+            #endif
             let originalData = try! Data(contentsOf: URL(fileURLWithPath: filePath))
             let downloadData = try! Data(contentsOf: downloadLocation)
             
@@ -664,10 +686,12 @@ final class WebRequestTests: XCTestCase {
             let fileName = fileURL.lastPathComponent
             guard let uploadedData = WebRequestTests.uploadedData[fileName] ?? WebRequestTests.uploadedData[""] else {
                 XCTFail("Unable to find uploaded data for '\(fileName)'")
+                #if !DOCKER_ALL_BUILD
                 print("Current upload count: \( WebRequestTests.uploadedData.count)")
                 for up in WebRequestTests.uploadedData.keys {
                     print(up)
                 }
+                #endif
                 sig.signal()
                 return
             }
@@ -692,8 +716,9 @@ final class WebRequestTests: XCTestCase {
         let eventRequest = URLRequest(url: eventsURL,
                                       cachePolicy: .reloadIgnoringLocalAndRemoteCacheData,
                                       timeoutInterval: .infinity)
-        
+        #if !DOCKER_ALL_BUILD
         print("Starting to stream events from '\(eventsURL.absoluteString)'")
+        #endif
         var didReceiveEvent: Bool = false
         let request = WebRequest.DataRequest(eventRequest, usingSession: session)
         request.addDidReceiveDataHandler { _, dataRequest, data in
@@ -702,7 +727,9 @@ final class WebRequestTests: XCTestCase {
                 XCTFail("Failed to convert data to string")
                 return
             }
+            #if !DOCKER_ALL_BUILD
             print(str, terminator: "")
+            #endif
         }
         
         let timeout: TimeInterval = 20
@@ -711,7 +738,9 @@ final class WebRequestTests: XCTestCase {
         waitQueue.async {
             // we want to let the events to stream for a while before we cancel the request to stop the stream
             Thread.sleep(forTimeInterval: timeout)
+            #if !DOCKER_ALL_BUILD
             print("Stopping request")
+            #endif
             request.cancel()
         }
         request.resume()
