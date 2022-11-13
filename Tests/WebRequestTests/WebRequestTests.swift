@@ -352,6 +352,7 @@ final class WebRequestTests: XCTestCase {
         }
         
         request.resume()
+        request.waitUntilComplete()
         sig.wait()
     }
     
@@ -400,6 +401,7 @@ final class WebRequestTests: XCTestCase {
         }
         
         request.resume()
+        request.waitUntilComplete()
         sig.wait()
     }
     
@@ -434,6 +436,7 @@ final class WebRequestTests: XCTestCase {
         }
         
         r.resume()
+        r.waitUntilComplete()
         sig.wait()
         
         
@@ -473,6 +476,7 @@ final class WebRequestTests: XCTestCase {
         }
         
         r.resume()
+        r.waitUntilComplete()
         sig.wait()
         
         
@@ -510,6 +514,7 @@ final class WebRequestTests: XCTestCase {
             sig.signal()
         }
         r.resume()
+        r.waitUntilComplete()
         sig.wait()
     }
     
@@ -564,6 +569,7 @@ final class WebRequestTests: XCTestCase {
         }
         
         r.resume()
+        r.waitUntilComplete()
         sig.wait()
     }
     
@@ -621,6 +627,7 @@ final class WebRequestTests: XCTestCase {
         }
         
         r.resume()
+        r.waitUntilComplete()
         sig.wait()
     }
     
