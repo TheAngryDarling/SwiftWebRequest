@@ -57,7 +57,16 @@ open class WebRequest: NSObject {
     public var requestStateChanged: ((WebRequest, WebRequest.State) -> Void)? = nil
     
     /// An object for users to store any additional information regarding the request
-    public var userInfo: [String: Any] = [:]
+    private var _userInfo: ResourceLock<[String: Any]> = .init(resource: [:])
+    public var userInfo: [String: Any]  {
+        get {
+            return self._userInfo.value
+        }
+        set {
+            self._userInfo.value = newValue
+        }
+    }
+    
     
     private let requestWorkingDispatchGroup = DispatchGroup()
     private var hasAlreadyLeftWorkGroup: Bool = false
