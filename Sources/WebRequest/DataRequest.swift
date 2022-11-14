@@ -20,14 +20,17 @@ public extension WebRequest {
         ///
         /// - Parameters:
         ///   - request: The request to execute
+        ///   - name: Custom Name identifing this request
         ///   - session: The URL Session to use
         ///   - eventDelegate: The Event Delegate used with the session
         ///   - completionHandler: The call back when done executing
         internal init(_ request: @autoclosure () -> URLRequest,
+                      name: String? = nil,
                       usingSession session: URLSession,
                       eventDelegate: URLSessionDataTaskEventHandler,
                       completionHandler: ((Results) -> Void)? = nil) {
             super.init(session.dataTask(with: request()),
+                       name: name,
                        session: nil,
                        eventDelegate: eventDelegate,
                        completionHandler: completionHandler)
@@ -37,9 +40,11 @@ public extension WebRequest {
         ///
         /// - Parameters:
         ///   - request: The request to execute
+        ///   - name: Custom Name identifing this request
         ///   - session: The URL Session to copy the configuration/queue from
         ///   - completionHandler: The call back when done executing
         public init(_ request: @autoclosure () -> URLRequest,
+                    name: String? = nil,
                     usingSession session: @autoclosure () -> URLSession,
                     completionHandler: ((Results) -> Void)? = nil) {
             
@@ -52,6 +57,7 @@ public extension WebRequest {
                                      delegate: eventDelegate)
             
             super.init(session.dataTask(with: request()),
+                       name: name,
                        session: session,
                        eventDelegate: eventDelegate,
                        completionHandler: completionHandler)
@@ -62,12 +68,15 @@ public extension WebRequest {
         ///
         /// - Parameters:
         ///   - url: The url to request
+        ///   - name: Custom Name identifing this request   
         ///   - session: The URL Session to copy the configuration/queue from
         ///   - completionHandler: The call back when done executing
         public convenience init(_ url: @autoclosure () -> URL,
+                                name: String? = nil,
                                 usingSession session: @autoclosure () -> URLSession,
                                 completionHandler: ((Results) -> Void)? = nil) {
             self.init(URLRequest(url: url()),
+                      name: name,
                       usingSession: session(),
                       completionHandler: completionHandler)
         }

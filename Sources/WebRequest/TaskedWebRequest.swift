@@ -352,11 +352,13 @@ public extension WebRequest {
         ///
         /// - Parameters:
         ///   - task: The task executing the request
+        ///   - name: Custom Name identifing this request
         ///   - session: The session used to create the task that should be invalidated
         ///   - eventDelegate: The delegate used to monitor the task events
         ///   - originalRequest: The original request of the task
         ///   - completionHandler: The call back when done executing
         internal init(_ task: URLSessionTask,
+                      name: String? = nil,
                       session: URLSession?,
                       eventDelegate: URLSessionTaskEventHandlerWithCompletionHandler<CompletionResults>,
                       completionHandler: ((Results) -> Void)? = nil) {
@@ -364,7 +366,7 @@ public extension WebRequest {
             self.task = task
             self.session = session
             self.eventDelegate = eventDelegate
-            super.init()
+            super.init(name: name)
             self.eventDelegate.addCompletionHandler(withId: "self") { [weak self] results, response, error in
                 guard self != nil else { return }
                 let results = TaskedWebRequestResults<CompletionResults>(request: self!.originalRequest!,

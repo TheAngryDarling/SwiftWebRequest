@@ -252,9 +252,11 @@ public extension WebRequest {
         ///
         /// - Parameters:
         ///   - request: The request to execute
+        ///   - name: Custom Name identifing this request
         ///   - session: The URL Session to copy the configuration/queue from
         ///   - completionHandler: The call back when done executing
         public init(_ request: @autoclosure () -> URLRequest,
+                    name: String? = nil,
                     usingSession session: @autoclosure () -> URLSession,
                     completionHandler: ((Results) -> Void)? = nil) {
             #if swift(>=5.3) || _runtime(_ObjC)
@@ -273,6 +275,7 @@ public extension WebRequest {
             #endif
             
             super.init(task,
+                       name: name,
                        session: session,
                        eventDelegate: delegate,
                        //originalRequest: req,
@@ -285,12 +288,15 @@ public extension WebRequest {
         ///
         /// - Parameters:
         ///   - url: The url to request
+        ///   - name: Custom Name identifing this request   
         ///   - session: The URL Session to copy the configuration/queue from
         ///   - completionHandler: The call back when done executing
         public convenience init(_ url: @autoclosure () -> URL,
+                                name: String? = nil,
                                 usingSession session: @autoclosure () -> URLSession,
                                 completionHandler: ((Results) -> Void)? = nil) {
             self.init(URLRequest(url: url()),
+                      name: name,
                       usingSession: session(),
                       completionHandler: completionHandler)
         }

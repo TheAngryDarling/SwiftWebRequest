@@ -13,13 +13,13 @@ open class WebRequest: NSObject {
         /// The request is currently being serviced by the session.
         /// A task in this state is subject to the request and resource timeouts specified in the session configuration object.
         case running = 0
-        // The request was suspended by the app.
+        /// The request was suspended by the app.
         /// No further processing takes place until it is resumed. A request in this state is not subject to timeouts.
         case suspended = 1
-        // The request has received a cancel message.
+        /// The request has received a cancel message.
         ///The delegate may or may not have received a urlSession(_:task:didCompleteWithError:) message yet. A request in this state is not subject to timeouts.
         case canceling = 2
-        // The request has completed (without being canceled), and the request's delegate receives no further callbacks.
+        /// The request has completed (without being canceled), and the request's delegate receives no further callbacks.
         /// If the request completed successfully, the request's error property is nil. Otherwise, it provides an error object that tells what went wrong. A request in this state is not subject to timeouts.
         case completed = 3
     }
@@ -64,6 +64,8 @@ open class WebRequest: NSObject {
     
     /// A unique UUID for this request object
     public let uid: String
+    /// Custom Name identifing this request
+    public let name: String?
     
     internal func triggerStateChange(_ state: WebRequest.State) {
         if let handler = requestStateChanged {
@@ -126,8 +128,9 @@ open class WebRequest: NSObject {
         
     }
     
-    internal override init() {
+    internal init(name: String?) {
         self.uid = UUID().uuidString
+        self.name = name
     }
     deinit {
         self.userInfo.removeAll()

@@ -80,15 +80,18 @@ public extension WebRequest {
         ///
         /// - Parameters:
         ///   - task: The task executing the request
+        ///   - name: Custom Name identifing this request
         ///   - session: The session used to create the task to be invalidated
         ///   - eventDelegate: The delegate used to monitor the task events
         ///   - completionHandler: The call back when done executing
         internal init(_ task: URLSessionDataTask,
+                      name: String? = nil,
                       session: URLSession?,
                       eventDelegate: URLSessionDataTaskEventHandler,
                       completionHandler: ((Results) -> Void)? = nil) {
             //print("Creating DataBaseRequest")
             super.init(task,
+                       name: name,
                        session: session,
                        eventDelegate: eventDelegate,
                        completionHandler: completionHandler)

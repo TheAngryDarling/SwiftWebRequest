@@ -98,10 +98,12 @@ public extension WebRequest {
         ///
         /// - Parameters:
         ///   - requests: The individual requests to execute
+        ///   - name: Custom Name identifing this request
         ///   - maxConcurrentRequests: The maximun number of requests to execute in parallel
         ///   - queueName: The queue name to use
         ///   - completionHandler: The call back when done executing
         public init(_ requests: @autoclosure () -> [WebRequest],
+                    name: String? = nil,
                     maxConcurrentRequests: Int? = nil,
                     queueName: String? = nil,
                     completionHandler: (([WebRequest]) -> Void)? = nil) {
@@ -120,7 +122,7 @@ public extension WebRequest {
             }
             self._progress = Progress(totalUnitCount: totalUnitsCount)
             #endif
-            super.init()
+            super.init(name: name)
             
             
             for t in reqs {
@@ -166,14 +168,17 @@ public extension WebRequest {
         ///
         /// - Parameters:
         ///   - requests: The individual requests to execute
+        ///   - name: Custom Name identifing this request
         ///   - maxConcurrentRequests: The maximun number of requests to execute in parallel
         ///   - queueName: The queue name to use
         ///   - completionHandler: The call back when done executing
         public convenience init(_ requests: WebRequest...,
+                                name: String? = nil,
                                 maxConcurrentRequests: Int? = nil,
                                 queueName: String? = nil,
                                 completionHandler: (([WebRequest]) -> Void)? = nil) {
             self.init(requests,
+                      name: name,
                       maxConcurrentRequests: maxConcurrentRequests,
                       queueName: queueName,
                       completionHandler: completionHandler)
@@ -183,11 +188,13 @@ public extension WebRequest {
         ///
         /// - Parameters:
         ///   - requests: The individual requests to execute
+        ///   - name: Custom Name identifing this request
         ///   - session: The URL Session to use when executing the requests
         ///   - maxConcurrentRequests: The maximun number of requests to execute in parallel
         ///   - queueName: The queue name to use
         ///   - completionHandler: The call back when done executing
         public convenience init(_ requests: @autoclosure () -> [URLRequest],
+                                name: String? = nil,
                                 usingSession session: @autoclosure () -> URLSession,
                                 maxConcurrentRequests: Int? = nil,
                                 queueName: String? = nil,
@@ -195,6 +202,7 @@ public extension WebRequest {
             let webRequests = requests().map( { DataRequest($0,
                                                             usingSession: session()) })
             self.init(webRequests,
+                      name: name,
                       maxConcurrentRequests: maxConcurrentRequests,
                       queueName: queueName,
                       completionHandler: completionHandler)
@@ -205,16 +213,19 @@ public extension WebRequest {
         ///
         /// - Parameters:
         ///   - requests: The individual requests to execute
+        ///   - name: Custom Name identifing this request
         ///   - session: The URL Session to use when executing the requests
         ///   - maxConcurrentRequests: The maximun number of requests to execute in parallel
         ///   - queueName: The queue name to use
         ///   - completionHandler: The call back when done executing
         public convenience init(_ requests: URLRequest...,
+                                name: String? = nil,
                                 usingSession session: @autoclosure () -> URLSession,
                                 maxConcurrentRequests: Int? = nil,
                                 queueName: String? = nil,
                                 completionHandler: (([WebRequest]) -> Void)? = nil) {
             self.init(requests,
+                      name: name,
                       usingSession: session(),
                       maxConcurrentRequests: maxConcurrentRequests,
                       queueName: queueName,
@@ -225,11 +236,13 @@ public extension WebRequest {
         ///
         /// - Parameters:
         ///   - urls: The individual urls to execute
+        ///   - name: Custom Name identifing this request
         ///   - session: The URL Session to use when executing the requests
         ///   - maxConcurrentRequests: The maximun number of requests to execute in parallel
         ///   - queueName: The queue name to use
         ///   - completionHandler: The call back when done executing
         public convenience init(_ urls: @autoclosure () -> [URL],
+                                name: String? = nil,
                                 usingSession session: @autoclosure () -> URLSession,
                                 maxConcurrentRequests: Int? = nil,
                                 queueName: String? = nil,
@@ -238,6 +251,7 @@ public extension WebRequest {
             let webRequests = urls().map( { DataRequest(URLRequest(url: $0),
                                                         usingSession: session()) })
             self.init(webRequests,
+                      name: name,
                       maxConcurrentRequests: maxConcurrentRequests,
                       queueName: queueName,
                       completionHandler: completionHandler)
@@ -248,16 +262,19 @@ public extension WebRequest {
         ///
         /// - Parameters:
         ///   - urls: The individual urls to execute
+        ///   - name: Custom Name identifing this request
         ///   - session: The URL Session to use when executing the requests
         ///   - maxConcurrentRequests: The maximun number of requests to execute in parallel
         ///   - queueName: The queue name to use
         ///   - completionHandler: The call back when done executing
         public convenience init(_ urls: URL...,
+                                name: String? = nil,
                                 usingSession session: @autoclosure () -> URLSession,
                                 maxConcurrentRequests: Int? = nil,
                                 queueName: String? = nil,
                                 completionHandler: (([WebRequest]) -> Void)? = nil) {
             self.init(urls,
+                      name: name,
                       usingSession: session(),
                       maxConcurrentRequests: maxConcurrentRequests,
                       queueName: queueName,

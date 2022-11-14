@@ -239,6 +239,7 @@ public extension WebRequest {
      
         /// Create a new WebRequest using the provided request generator and session.
         public init(requestGenerator: RequestGenerator,
+                    name: String? = nil,
                     usingSession session: @escaping @autoclosure () -> URLSession,
                     repeatInterval: TimeInterval = RepeatedDataRequestConstants.DEFAULT_REPEAT_INTERVAL,
                     repeatHandler: @escaping (RepeatedDataRequest<T>, DataRequest.Results, Int) throws -> RepeatResults,
@@ -260,11 +261,12 @@ public extension WebRequest {
             
             self.results = .init(request: self.originalRequest)
             
-            super.init()
+            super.init(name: name)
         }
         
         /// Create a new WebRequest using the provided request and session.
         public convenience init(_ request: @escaping @autoclosure () -> URLRequest,
+                                name: String? = nil,
                                 updateRequestDetails: ((_ parameters: inout [URLQueryItem]?,
                                                         _ headers: inout [String: String]?,
                                                         _ repeatCount: Int) -> Void)? = nil,
@@ -274,6 +276,7 @@ public extension WebRequest {
                                 completionHandler: ((DataRequest.Results, T?, Swift.Error?) -> Void)? = nil) {
             
             self.init(requestGenerator: .request({ _, _ in return request() }, update: updateRequestDetails),
+                      name: name,
                       usingSession: session(),
                       repeatInterval: repeatInterval,
                       repeatHandler: repeatHandler,
@@ -283,6 +286,7 @@ public extension WebRequest {
         /// Create a new WebRequest using the provided request and session.
         public convenience init(_ request: @escaping (_ previousRequest: URLRequest?,
                                                       _ repeatCount: Int) -> URLRequest,
+                                name: String? = nil,
                                 updateRequestDetails: ((_ parameters: inout [URLQueryItem]?,
                                                         _ headers: inout [String: String]?,
                                                         _ repeatCount: Int) -> Void)? = nil,
@@ -292,6 +296,7 @@ public extension WebRequest {
                                 completionHandler: ((DataRequest.Results, T?, Swift.Error?) -> Void)? = nil) {
             
             self.init(requestGenerator: .request(request, update: updateRequestDetails),
+                      name: name,
                       usingSession: session(),
                       repeatInterval: repeatInterval,
                       repeatHandler: repeatHandler,
@@ -300,6 +305,7 @@ public extension WebRequest {
         
         // Create a new WebRequest using the provided url and session
         public convenience init(_ url: @escaping @autoclosure () -> URL,
+                                name: String? = nil,
                                 updateRequestDetails: ((_ parameters: inout [URLQueryItem]?,
                                                         _ headers: inout [String: String]?,
                                                         _ repeatCount: Int) -> Void)? = nil,
@@ -308,6 +314,7 @@ public extension WebRequest {
                                 repeatHandler: @escaping (RepeatedDataRequest<T>, DataRequest.Results, Int) throws -> RepeatResults,
                                 completionHandler: ((DataRequest.Results, T?, Swift.Error?) -> Void)? = nil) {
             self.init(requestGenerator: .url({ _, _ in return url() }, update: updateRequestDetails),
+                      name: name,
                       usingSession: session(),
                       repeatInterval: repeatInterval,
                       repeatHandler: repeatHandler,
@@ -317,6 +324,7 @@ public extension WebRequest {
         // Create a new WebRequest using the provided url and session
         public convenience init(_ url: @escaping (_ previousURL: URL?,
                                                   _ repeatCount: Int) -> URL,
+                                name: String? = nil,
                                 updateRequestDetails: ((_ parameters: inout [URLQueryItem]?,
                                                         _ headers: inout [String: String]?,
                                                         _ repeatCount: Int) -> Void)? = nil,
@@ -325,6 +333,7 @@ public extension WebRequest {
                                 repeatHandler: @escaping (RepeatedDataRequest<T>, DataRequest.Results, Int) throws -> RepeatResults,
                                 completionHandler: ((DataRequest.Results, T?, Swift.Error?) -> Void)? = nil) {
             self.init(requestGenerator: .url(url, update: updateRequestDetails),
+                      name: name,
                       usingSession: session(),
                       repeatInterval: repeatInterval,
                       repeatHandler: repeatHandler,
