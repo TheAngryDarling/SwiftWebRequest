@@ -151,6 +151,27 @@ public extension WebRequest {
     
     @available(*, deprecated, renamed: "RepeatedDataRequest")
     typealias RepeatedRequest<T> = RepeatedDataRequest<T>
+    /// Results of the repeated request
+    struct RepeatedDataRequestResults<ResultObject> {
+        
+        /// Repeat parsed Object
+        public let object: ResultObject?
+        public let request: URLRequest
+        public let response: URLResponse?
+        public let error: Error?
+        
+        
+        public init(object: ResultObject? = nil,
+                    request: URLRequest,
+                    response: URLResponse? = nil,
+                    error: Error? = nil) {
+            self.object = object
+            self.request = request
+            self.response = response
+            self.error = error
+        }
+    }
+    
     /// RepeatedRequest allows for excuting the same request repeatidly until a certain condition.
     /// Its good for when polling a server for some sort of state change like running a task and waiting for it to complete
     class RepeatedDataRequest<T>: WebRequest {
@@ -172,6 +193,9 @@ public extension WebRequest {
             }
         }
         
+        /// Results of the repeated request
+        public typealias Results = RepeatedDataRequestResults<T>
+        
         private var _state: State = .suspended
         public override var state: State { return self._state }
         
@@ -183,6 +207,8 @@ public extension WebRequest {
         private let notificationCenterEventQueue: OperationQueue = OperationQueue()
         //private let request: URLRequest
         //private let session: URLSession
+        
+        public private(set) var results: Results
         
         private var _error: Error? = nil
         public override var error: Error? { return _error }
@@ -231,6 +257,8 @@ public extension WebRequest {
             #if _runtime(_ObjC)
             self._progress = Progress(totalUnitCount: 0)
             #endif
+            
+            self.results = .init(request: self.originalRequest)
             
             super.init()
         }
@@ -312,6 +340,7 @@ public extension WebRequest {
             }
             self.webRequest?.emptyResultsData()
             self.webRequest = nil
+            self.results = .init(request: self.currentRequest)
         }
         
         
@@ -366,7 +395,6 @@ public extension WebRequest {
                 currentSelf.webRequest?.emptyResultsData()
                 currentSelf.webRequest = nil
                 
-                
                 // Get response error if any
                 var err: Swift.Error? = requestResults.error
                 var shouldContinue: Bool = true
@@ -396,6 +424,12 @@ public extension WebRequest {
                     
                 } else {
                     
+                    currentSelf.results = .init(object: results,
+                                                request: requestResults.request,
+                                                response: requestResults.response,
+                                                error: err ?? requestResults.error)
+                    
+                    
                     let finishState = (currentSelf.webRequest?.state ?? .completed)
                     currentSelf._state = finishState
                     currentSelf._error = err
@@ -412,6 +446,10 @@ public extension WebRequest {
                     }
                     
                 }
+                
+                // Empty old request data
+                currentSelf.webRequest?.emptyResultsData()
+                currentSelf.webRequest = nil
                 
                 
             }
