@@ -24,10 +24,20 @@ open class WebRequest: NSObject {
         case completed = 3
     }
     
-    /// synchronized resource around indicator if the web request has started yet
+    /// Synchronized resource around indicator if the web request has started yet
     private let _hasStarted: ResourceLock<Bool> = .init(resource: false)
     /// Indicator if the web request has started yet
     public var hasStarted: Bool { return self._hasStarted.value }
+    
+    /// Synchronized resource indicator if the web request is running
+    private let _isRunning: ResourceLock<Bool> = .init(resource: false)
+    /// Indicator if the web request is running (request has started but has not been completed)
+    public var isRunning: Bool { return self._isRunning.value }
+    
+    /// Synchronized resource indicator if the web request has completed
+    private let _hasCompleted: ResourceLock<Bool> = .init(resource: false)
+    /// Inidcator if the current web request has completed
+    public var hasCompleted: Bool { return self._hasCompleted.value }
     
     /// The current state of the requset
     public var state: State { fatalError("Not Impelemented") }
@@ -70,9 +80,8 @@ open class WebRequest: NSObject {
         }
     }
     
-    
-    private let requestWorkingDispatchGroup = DispatchGroup()
-    private var hasAlreadyLeftWorkGroup: Bool = false
+    /// Synchronized array of callbacks to execute when web request has completed
+    private var waitCompletionCallbacks: ResourceLock<[() -> Void]> = .init(resource: [])
     
     /// A unique UUID for this request object
     public let uid: String
@@ -92,34 +101,38 @@ open class WebRequest: NSObject {
                 handler(self, state)
             }
         }
+        var triggerDoneGroup: Bool = false
         let event: ((WebRequest) -> Void)? = {
             switch state {
                 case .completed:
                     NotificationCenter.default.post(name: Notification.Name.WebRequest.DidComplete, object: self)
-                    eventHandlerQueue.sync {
-                        if !hasAlreadyLeftWorkGroup {
-                            hasAlreadyLeftWorkGroup = true
-                            requestWorkingDispatchGroup.leave()
-                        }
-                    }
+                    // flag that will eventuall release any wait calls
+                    triggerDoneGroup = true
+                    // change running indicator to false
+                    self._isRunning.value = false
+                    // change has completed indicator to true
+                    self._hasCompleted.value = true
                     return self.requestCompleted
                 case .canceling:
                     NotificationCenter.default.post(name: Notification.Name.WebRequest.DidCancel, object: self)
-                    eventHandlerQueue.sync {
-                        if !hasAlreadyLeftWorkGroup {
-                            hasAlreadyLeftWorkGroup = true
-                            requestWorkingDispatchGroup.leave()
-                        }
-                    }
+                    // flag that will eventuall release any wait calls
+                    triggerDoneGroup = true
+                    // change running indicator to false
+                    self._isRunning.value = false
+                    // change has completed indicator to true
+                    self._hasCompleted.value = true
                     return self.requestCancelled
                 case .suspended:
                     NotificationCenter.default.post(name: Notification.Name.WebRequest.DidSuspend, object: self)
                     return self.requestSuspended
                 case .running:
                     if !self._hasStarted.valueThenSet(to: true) {
-                        hasAlreadyLeftWorkGroup = false
-                        requestWorkingDispatchGroup.enter()
+                        
                         NotificationCenter.default.post(name: Notification.Name.WebRequest.DidStart, object: self)
+                        // change running indicator to true
+                        self._isRunning.value = true
+                        // change has completed indicator to false
+                        self._hasCompleted.value = false
                         return self.requestStarted
                     } else {
                         NotificationCenter.default.post(name: Notification.Name.WebRequest.DidResume, object: self)
@@ -138,7 +151,14 @@ open class WebRequest: NSObject {
         NotificationCenter.default.post(name: Notification.Name.WebRequest.StateChanged,
                                         object: self,
                                         userInfo: [Notification.Name.WebRequest.Keys.State: state])
-        
+        if triggerDoneGroup {
+            self.waitCompletionCallbacks.withUpdatingLock { r in
+                for waitEvent in r {
+                    waitEvent()
+                }
+                r = []
+            }
+        }
     }
     
     internal init(name: String?) {
@@ -146,6 +166,10 @@ open class WebRequest: NSObject {
         self.name = name
     }
     deinit {
+        // if we loose reference we cancel the requset?
+        if self._isRunning.value {
+            self.cancel()
+        }
         self.userInfo.removeAll()
         
         // removing any reference to any exture closures
@@ -155,6 +179,13 @@ open class WebRequest: NSObject {
         self.requestCancelled = nil
         self.requestCompleted = nil
         self.requestStateChanged = nil
+        
+        self.waitCompletionCallbacks.withUpdatingLock { waitCallbacks in
+            for waitEvent in waitCallbacks {
+                waitEvent()
+            }
+            waitCallbacks = []
+        }
     }
     
     internal func callAsyncEventHandler(handler: @escaping () -> Void) {
@@ -204,7 +235,58 @@ open class WebRequest: NSObject {
     
     /// Wait until request is completed.  There is no guarentee that the completion events were called before this method returns
     public func waitUntilComplete() {
-         self.requestWorkingDispatchGroup.wait()
+        // Make sure the request has started before waiting
+        
+        var ds: DispatchSemaphore? = nil
+        self._hasCompleted.withUpdatingLock { hasCompleted in
+            guard !hasCompleted else { return }
+            ds = DispatchSemaphore(value: 0)
+            self.waitCompletionCallbacks.withUpdatingLock { waitCallbacks in
+                waitCallbacks.append {
+                    ds?.signal()
+                }
+            }
+        }
+        ds?.wait()
+    }
+    
+    /// Wait until request complets OR timeout has occured
+    /// - Parameter timeout: The latest time to wait for a group to complete.
+    /// - Returns: A result value indicating whether the method returned due to a timeout.
+    @discardableResult
+    public func waitUntilComplete(timeout: DispatchTime) -> DispatchTimeoutResult {
+        // Make sure the request has started before waiting
+        var ds: DispatchSemaphore? = nil
+        self._hasCompleted.withUpdatingLock { hasCompleted in
+            guard !hasCompleted else { return }
+            ds = DispatchSemaphore(value: 0)
+            self.waitCompletionCallbacks.withUpdatingLock { waitCallbacks in
+                waitCallbacks.append {
+                    ds?.signal()
+                }
+            }
+        }
+        return ds?.wait(timeout: timeout) ?? .success
+    }
+    
+    /// Wait until request complets OR timeout has occured
+    /// - Parameters:
+    ///   - timeout: The latest time to wait for a group to complete.
+    ///   - onTimeout: The callback to execute IF the wait timed out
+    public func waitUntilCompleteOnTimeOut(timeout: DispatchTime, onTimeout: () -> Void) {
+        if self.waitUntilComplete(timeout: timeout) == .timedOut {
+            onTimeout()
+        }
+    }
+    
+    /// Wait until request complets OR timeout has occured
+    /// - Parameters:
+    ///   - timeout: The latest time to wait for a group to complete.
+    ///   - onSuccess: The callback to execute IF the wait completed successfully
+    public func waitUntilCompleteOnSuccess(timeout: DispatchTime, onSuccess: () -> Void) {
+        if self.waitUntilComplete(timeout: timeout) == .success {
+            onSuccess()
+        }
     }
     
     internal static func createCancelationError(forURL url: URL) -> Error {
