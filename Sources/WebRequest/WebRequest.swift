@@ -91,6 +91,34 @@ open class WebRequest: NSObject {
     /// Object used to synchronize access to triggerStateChange function
     private let stateChangeLock = NSLock()
     
+    
+    internal init(name: String?) {
+        self.uid = UUID().uuidString
+        self.name = name
+    }
+    deinit {
+        // if we loose reference we cancel the requset?
+        if self._isRunning.value {
+            self.cancel()
+        }
+        self.userInfo.removeAll()
+        
+        // removing any reference to any exture closures
+        self.requestStarted = nil
+        self.requestResumed = nil
+        self.requestSuspended = nil
+        self.requestCancelled = nil
+        self.requestCompleted = nil
+        self.requestStateChanged = nil
+        
+        self.waitCompletionCallbacks.withUpdatingLock { waitCallbacks in
+            for waitEvent in waitCallbacks {
+                waitEvent()
+            }
+            waitCallbacks = []
+        }
+    }
+    
     internal func triggerStateChange(_ state: WebRequest.State) {
         // synchronize access to this method
         self.stateChangeLock.lock()
@@ -161,32 +189,7 @@ open class WebRequest: NSObject {
         }
     }
     
-    internal init(name: String?) {
-        self.uid = UUID().uuidString
-        self.name = name
-    }
-    deinit {
-        // if we loose reference we cancel the requset?
-        if self._isRunning.value {
-            self.cancel()
-        }
-        self.userInfo.removeAll()
-        
-        // removing any reference to any exture closures
-        self.requestStarted = nil
-        self.requestResumed = nil
-        self.requestSuspended = nil
-        self.requestCancelled = nil
-        self.requestCompleted = nil
-        self.requestStateChanged = nil
-        
-        self.waitCompletionCallbacks.withUpdatingLock { waitCallbacks in
-            for waitEvent in waitCallbacks {
-                waitEvent()
-            }
-            waitCallbacks = []
-        }
-    }
+    
     
     internal func callAsyncEventHandler(handler: @escaping () -> Void) {
         eventHandlerQueue.async {
