@@ -12,6 +12,8 @@ public extension Notification.Name {
         
         public struct Keys {
             public static let State = "org.webrequest.notification.key.state"
+            public static let FromState = "org.webrequest.notification.key.fromState"
+            public static let ToState = "org.webrequest.notification.key.toState"
             public static let ChildRequest = "org.webrequest.notification.key.child"
             public static let ChildIndex = "org.webrequest.notification.key.child.index"
             

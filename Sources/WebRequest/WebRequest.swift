@@ -147,6 +147,14 @@ open class WebRequest: NSObject {
     }
     deinit {
         self.userInfo.removeAll()
+        
+        // removing any reference to any exture closures
+        self.requestStarted = nil
+        self.requestResumed = nil
+        self.requestSuspended = nil
+        self.requestCancelled = nil
+        self.requestCompleted = nil
+        self.requestStateChanged = nil
     }
     
     internal func callAsyncEventHandler(handler: @escaping () -> Void) {

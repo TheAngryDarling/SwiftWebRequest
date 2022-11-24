@@ -283,6 +283,16 @@ public extension WebRequest {
         
         deinit {
             NotificationCenter.default.removeObserver(self)
+            
+            // removing any reference to any exture closures
+            self.singleRequestStarted = nil
+            self.singleRequestResumed = nil
+            self.singleRequestSuspended = nil
+            self.singleRequestCancelled = nil
+            self.singleRequestCompleted = nil
+            self.completionHandler.withUpdatingLock { r in
+                r.handler = nil
+            }
         }
         
         private func webRequestEventMonitor(notification: Notification) -> Void {

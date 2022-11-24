@@ -356,6 +356,12 @@ public extension WebRequest {
             self.webRequest?.emptyResultsData()
             self.webRequest = nil
             self.results = .init(request: self.currentRequest)
+            
+            // removing any reference to any exture closures
+            self.repeatHandler = nil
+            self.completionHandler.withUpdatingLock { r in
+                r.handler = nil
+            }
         }
         
         
