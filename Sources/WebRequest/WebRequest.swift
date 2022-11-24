@@ -24,7 +24,10 @@ open class WebRequest: NSObject {
         case completed = 3
     }
     
-    private let hasStarted: ResourceLock<Bool> = .init(resource: false)
+    /// synchronized resource around indicator if the web request has started yet
+    private let _hasStarted: ResourceLock<Bool> = .init(resource: false)
+    /// Indicator if the web request has started yet
+    public var hasStarted: Bool { return self._hasStarted.value }
     
     /// The current state of the requset
     public var state: State { fatalError("Not Impelemented") }
@@ -113,7 +116,7 @@ open class WebRequest: NSObject {
                     NotificationCenter.default.post(name: Notification.Name.WebRequest.DidSuspend, object: self)
                     return self.requestSuspended
                 case .running:
-                    if !self.hasStarted.valueThenSet(to: true) {
+                    if !self._hasStarted.valueThenSet(to: true) {
                         hasAlreadyLeftWorkGroup = false
                         requestWorkingDispatchGroup.enter()
                         NotificationCenter.default.post(name: Notification.Name.WebRequest.DidStart, object: self)
