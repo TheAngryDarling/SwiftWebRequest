@@ -34,9 +34,8 @@ public extension WebRequest {
         /// Event handler for when one of the child requests state has changed
         public var singleRequestStateChanged: ((GroupRequest, Int, WebRequest, WebRequest.State) -> Void)? = nil
         
-        private var completionHandler: (([WebRequest]) -> Void)? = nil
-        private let completionHandlerLockingQueue: DispatchQueue = DispatchQueue(label: "org.webrequest.WebRequest.CompletionHandler.Locking")
-        private var hasCalledCompletionHandler: Bool = false
+        
+        private let completionHandler: HandlerResourceLock<([WebRequest]) -> Void>
         
         private var operationQueue: OperationQueue = OperationQueue()
         public var maxConcurrentRequestCount: Int {
@@ -122,6 +121,9 @@ public extension WebRequest {
             }
             self._progress = Progress(totalUnitCount: totalUnitsCount)
             #endif
+            
+            self.completionHandler = .init(completionHandler)
+            
             super.init(name: name)
             
             
@@ -156,9 +158,7 @@ public extension WebRequest {
                     t.waitUntilComplete()
                 }
             }
-            if let ch = completionHandler {
-                self.completionHandler = ch
-            }
+            
             
         }
         
@@ -286,23 +286,23 @@ public extension WebRequest {
         }
         
         private func webRequestEventMonitor(notification: Notification) -> Void {
-            if self.completionHandlerLockingQueue.sync(execute: { return self.hasCalledCompletionHandler }) { return }
+            guard !self.completionHandler.hasCalled else {
+                // already executed completion so lets not do any more
+                return
+            }
+            
             func doCompleteCheck() {
-                self.completionHandlerLockingQueue.sync {
-                    
-                    //print("[\(Thread.current)] - \(self).hasCompletedRequests: \(self.hasCompletedRequests)")
-                    if !self.hasCalledCompletionHandler &&
-                        self.requestsFinished.filter({$0}).count == self.requests.count {
-                        //Stop monitoring for child request events
-                        //for r in self.requests { NotificationCenter.default.removeObserver(self, name: nil, object: r) }
-                        //NotificationCenter.default.removeObserver(self)
-                        self.hasCalledCompletionHandler = true
-                        self.triggerStateChange(.completed)
-                        
-                        if let handler = self.completionHandler {
-                            /// was async
-                            self.callSyncEventHandler { handler(self.requests) }
-                        }
+                self.completionHandler.withUpdatingLock { r in
+                    guard !r.hasCalled else { return }
+                    // get count of all that are finished, complare to count of all requests
+                    guard self.requestsFinished.filter({$0}).count == self.requests.count else {
+                        return
+                    }
+                    self.triggerStateChange(.completed)
+                    r.hasCalled = true
+                    if let handler = r.handler {
+                        /// was async
+                        self.callSyncEventHandler { handler(self.requests) }
                     }
                 }
             }

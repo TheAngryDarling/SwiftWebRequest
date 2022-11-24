@@ -170,6 +170,14 @@ public extension WebRequest {
             self.response = response
             self.error = error
         }
+        
+        public init(object: ResultObject? = nil,
+                    dataResults: DataRequest.Results) {
+            self.init(object: object,
+                      request: dataResults.request,
+                      response: dataResults.response,
+                      error: dataResults.error)
+        }
     }
     
     /// RepeatedRequest allows for excuting the same request repeatidly until a certain condition.
@@ -223,9 +231,7 @@ public extension WebRequest {
         private let session: URLSession
         private let delegate: DataBaseRequest.URLSessionDataTaskEventHandler
         
-        private var completionHandler: ((DataRequest.Results, T?, Swift.Error?) -> Void)? = nil
-        private let completionHandlerLockingQueue: DispatchQueue = DispatchQueue(label: "org.webrequest.WebRequest.CompletionHandler.Locking")
-        private var hasCalledCompletionHandler: Bool = false
+        private let completionHandler: HandlerResourceLock<(DataRequest.Results, T?, Swift.Error?) -> Void>
         
         /// Repeat handler is the event handler that gets called to indicate if the class should repeat or not.
         /// It allwos for results to be passed from here to the completion handler so they do not need to be parsed twice.
@@ -250,7 +256,7 @@ public extension WebRequest {
             self.delegate = delegate
             self.session = URLSession(copy: session(), delegate: delegate)
             self.repeatHandler = repeatHandler
-            self.completionHandler = completionHandler
+            self.completionHandler = .init(completionHandler)
             
             self.originalRequest = requestGenerator.generate(previousRequest: nil, repeatCount: 0)
             self.currentRequest = self.originalRequest
@@ -444,15 +450,17 @@ public extension WebRequest {
                     currentSelf._error = err
                     // We are no longer repeating.  Lets trigger the proper event handlers.
                     currentSelf.triggerStateChange(finishState)
-                    currentSelf.completionHandlerLockingQueue.sync {
-                        currentSelf.hasCalledCompletionHandler = true
-                    }
-                    if let handler = currentSelf.completionHandler {
-                        /// was async
-                        currentSelf.callSyncEventHandler {
-                            handler(requestResults, results, err)
+                    
+                    
+                    currentSelf.completionHandler.withUpdatingLock { r in
+                        r.hasCalled = true
+                        if let h = r.handler {
+                             currentSelf.callSyncEventHandler {
+                                 h(requestResults, results, err)
+                             }
                         }
                     }
+                    
                     
                 }
                 
@@ -510,6 +518,14 @@ public extension WebRequest {
         public override func cancel() {
             guard self._state != .canceling && self._state != .completed else { return }
             
+            let cancelledResults = DataRequest.Results(request: self.currentRequest,
+                                              response: nil,
+                                              error: DataRequest.createCancelationError(forURL: self.currentRequest.url!),
+                                              data: self.webRequest?.results.data)
+            
+            self.results = .init(object: nil,
+                                 dataResults: cancelledResults)
+            
             // If we cancel with no child request
             if self.webRequest == nil ||
                 // Or has a child request without a resposne
@@ -517,15 +533,19 @@ public extension WebRequest {
                 // Or a child request with a canceling resposne
                (self.webRequest?.state == .canceling) {
                 
-                let results = DataRequest.Results(request: self.currentRequest,
-                                                  response: nil,
-                                                  error: DataRequest.createCancelationError(forURL: self.currentRequest.url!),
-                                                  data: self.webRequest?.results.data)
-                
-                if let f = self.completionHandler {
-                    /// was async
-                    self.callSyncEventHandler { f(results, nil, results.error) }
+                self.completionHandler.withUpdatingLock { r in
+                    r.hasCalled = true
+                    
+                    
+                    if let f = r.handler {
+                        /// was async
+                        self.callSyncEventHandler {
+                            f(cancelledResults, nil, cancelledResults.error)
+                        }
+                    }
                 }
+                
+                
                 
             }
             
@@ -550,7 +570,7 @@ public extension WebRequest {
         
         private func webRequestEventMonitor(notification: Notification) -> Void {
             
-            if self.completionHandlerLockingQueue.sync(execute: { return self.hasCalledCompletionHandler }) { return }
+            guard !self.completionHandler.value.hasCalled else { return }
             
             guard let request = notification.object as? WebRequest else { return }
             

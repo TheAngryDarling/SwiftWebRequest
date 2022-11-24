@@ -24,7 +24,7 @@ open class WebRequest: NSObject {
         case completed = 3
     }
     
-    private var hasStarted: Bool = false
+    private let hasStarted: ResourceLock<Bool> = .init(resource: false)
     
     /// The current state of the requset
     public var state: State { fatalError("Not Impelemented") }
@@ -76,7 +76,14 @@ open class WebRequest: NSObject {
     /// Custom Name identifing this request
     public let name: String?
     
+    /// Object used to synchronize access to triggerStateChange function
+    private let stateChangeLock = NSLock()
+    
     internal func triggerStateChange(_ state: WebRequest.State) {
+        // synchronize access to this method
+        self.stateChangeLock.lock()
+        defer { self.stateChangeLock.unlock() }
+        
         if let handler = requestStateChanged {
             callAsyncEventHandler {
                 handler(self, state)
@@ -106,13 +113,7 @@ open class WebRequest: NSObject {
                     NotificationCenter.default.post(name: Notification.Name.WebRequest.DidSuspend, object: self)
                     return self.requestSuspended
                 case .running:
-                    let started: Bool = eventHandlerQueue.sync {
-                        let rtn: Bool = self.hasStarted
-                        if !rtn { self.hasStarted = true }
-                        
-                        return rtn
-                    }
-                    if !started {
+                    if !self.hasStarted.valueThenSet(to: true) {
                         hasAlreadyLeftWorkGroup = false
                         requestWorkingDispatchGroup.enter()
                         NotificationCenter.default.post(name: Notification.Name.WebRequest.DidStart, object: self)
