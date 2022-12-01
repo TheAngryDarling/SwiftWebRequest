@@ -13,6 +13,30 @@ import Dispatch
     #endif
 #endif
 
+fileprivate extension ResourceLock where Resource == [Bool] {
+    func allEquals(_ value: Bool) -> Bool {
+        return self.withUpdatingLock { ary in
+            guard !ary.contains(!value) else { return false }
+            return true
+        }
+    }
+    
+    var count: Int {
+        return self.withUpdatingLock { ary in return ary.count }
+    }
+    subscript(position: Int) -> Bool {
+        get {
+            return self.withUpdatingLock { ary in
+                return ary[position]
+            }
+        }
+        set {
+            self.withUpdatingLock { ary in
+                ary[position] = newValue
+            }
+        }
+    }
+}
 public extension WebRequest {
     /// GroupWebRequest allows for excuting multiple WebRequests at the same time
     class GroupRequest: WebRequest {
@@ -43,8 +67,8 @@ public extension WebRequest {
             set { self.operationQueue.maxConcurrentOperationCount = newValue }
         }
         /// array of child web requsts
-        public let requests: [WebRequest]
-        private var requestsFinished: [Bool]
+        public private(set) var requests: [WebRequest]
+        private var requestsFinished: ResourceLock<[Bool]>
         private var suspendedRequests: [Int] = []
         
         private var hasBeenCancelled: Bool = false
@@ -72,6 +96,9 @@ public extension WebRequest {
         }
         
         
+        /// The last state set from the resume/suspend/cancel methods
+        private var _previousState: WebRequest.State = .suspended
+        
         /// The overall state of the child requests
         public override var state: WebRequest.State {
             guard !self.hasBeenCancelled else { return WebRequest.State.canceling }
@@ -79,13 +106,19 @@ public extension WebRequest {
             let states: [WebRequest.State] = [.suspended, .running, .canceling, .completed]
             for s in states {
                 //If all states are the same, return that state value
-                if self.requests.filter({ $0.state == s }).count == self.requests.count { return s }
+                if self.requests.allSatisfy({ return $0.state == s }) {
+                    return s
+                }
+            }
+            // If any request was canceled then we consider the group canceled
+            if self.requests.contains(where: { return $0.state == .canceling }) {
+                return .canceling
             }
             
             // If we have any running or suspended requests, we return running state
-            if self.requests.first(where: { $0.state == .running || $0.state == .suspended }) != nil { return WebRequest.State.running }
-            // If all states are completed or canceling then we return completed
-            if self.requests.filter({ $0.state == .completed || $0.state == .canceling }).count == self.requests.count { return WebRequest.State.completed }
+            if self.requests.contains(where: { $0.state == .running || $0.state == .suspended }) {
+                return .running
+            }
             
             //Return default state
             return WebRequest.State.running
@@ -113,7 +146,7 @@ public extension WebRequest {
             if let name = queueName { self.operationQueue.name = name }
             self.operationQueue.isSuspended = true
             self.requests = reqs
-            self.requestsFinished = [Bool](repeating: false, count: reqs.count)
+            self.requestsFinished = .init(resource: [Bool](repeating: false, count: reqs.count))
             #if _runtime(_ObjC)
             var totalUnitsCount: Int64 = 0
             if #available (macOS 10.13, iOS 11.0, tvOS 11.0, watchOS 4.0, *) {
@@ -133,19 +166,8 @@ public extension WebRequest {
                 // Links child to parent.
                 t.userInfo[WebRequest.UserInfoKeys.parent] = self
                 
-                //Setup notification monitoring
-                /*_ = NotificationCenter.default.addObserver(forName: nil,
-                                                           object: t,
-                                                           queue: nil,
-                                                           using: self.webRequestEventMonitor)*/
-                // We do it this way to use a weak self to ensure no strong reference between
-                // NotificationCenter and ourself
-                _ = NotificationCenter.default.addObserver(forName: nil,
-                                                           object: t,
-                                                           queue: nil) { [weak self] notification in
-                    self?.webRequestEventMonitor(notification: notification)
-                    
-                }
+                t.registerStateChangedHandler(handlerID: "GroupRequest[\(self.uid)]",
+                                              handler: childRequestStateChanged)
                 
                 #if _runtime(_ObjC)
                 if #available (macOS 10.13, iOS 11.0, tvOS 11.0, watchOS 4.0, *) {
@@ -156,6 +178,10 @@ public extension WebRequest {
                     t.resume()
                     // We are waiting for task to finish
                     t.waitUntilComplete()
+                    // Stop monitoring for events
+                    t.unregisterStateChangedHandler(for: "GroupRequest[\(self.uid)]")
+                    // remove refeference of self from child request
+                    t.userInfo[WebRequest.UserInfoKeys.parent] = nil
                 }
             }
             
@@ -283,7 +309,16 @@ public extension WebRequest {
         
         deinit {
             NotificationCenter.default.removeObserver(self)
-            
+            // remove any connection of this group request
+            // in any child request
+            for request in self.requests {
+                // Stop monitoring for events
+                request.unregisterStateChangedHandler(for: "GroupRequest[\(self.uid)]")
+                // remove refeference of self from child request
+                request.userInfo[WebRequest.UserInfoKeys.parent] = nil
+            }
+            // clear array of requests
+            self.requests = []
             // removing any reference to any exture closures
             self.singleRequestStarted = nil
             self.singleRequestResumed = nil
@@ -295,72 +330,115 @@ public extension WebRequest {
             }
         }
         
-        private func webRequestEventMonitor(notification: Notification) -> Void {
-            guard !self.completionHandler.hasCalled else {
-                // already executed completion so lets not do any more
-                return
-            }
-            
-            func doCompleteCheck() {
-                self.completionHandler.withUpdatingLock { r in
-                    guard !r.hasCalled else { return }
-                    // get count of all that are finished, complare to count of all requests
-                    guard self.requestsFinished.filter({$0}).count == self.requests.count else {
-                        return
-                    }
-                    self.triggerStateChange(.completed)
-                    r.hasCalled = true
-                    if let handler = r.handler {
-                        /// was async
-                        self.callSyncEventHandler { handler(self.requests) }
-                    }
+        private func checkForCompletion(statusChange: WebRequest.ChangeState) {
+            self.completionHandler.withUpdatingLock { r in
+                guard !r.hasCalled &&
+                      self.requestsFinished.allEquals(true) else {
+                    return
+                }
+                
+                r.hasCalled = true
+                self.triggerStateChange(from: .running, to: statusChange.state)
+                
+                if let handler = r.handler {
+                    self.callSyncEventHandler { handler(self.requests) }
                 }
             }
-           
-            guard let request = notification.object as? WebRequest else { return }
-            #if swift(>=5.0)
-            guard let idx = self.requests.firstIndex(of: request) else { return }
-            #else
-            guard let idx = self.requests.index(of: request) else { return }
-            #endif
-            
-            let name = notification.name.rawValue + "Child"
-            let newNot = Notification.Name(rawValue: name)
-            
-            
-            var info = notification.userInfo ?? [:]
-            info[Notification.Name.WebRequest.Keys.ChildRequest] = request
-            info[Notification.Name.WebRequest.Keys.ChildIndex] = idx
-            
-            
-            //Propogate child event to group event
-            NotificationCenter.default.post(name: newNot, object: self, userInfo: info)
-            
-            if notification.name == Notification.Name.WebRequest.DidCancel {
-                if let handler = self.singleRequestCancelled { self.callAsyncEventHandler { handler(self, idx, request) } }
-                self.requestsFinished[idx] = true
-                doCompleteCheck()
-            } else if notification.name == Notification.Name.WebRequest.DidComplete {
-                if let handler = self.singleRequestCompleted { self.callAsyncEventHandler { handler(self, idx, request) } }
-                self.requestsFinished[idx] = true
-                doCompleteCheck()
-            } else if notification.name == Notification.Name.WebRequest.DidResume {
-                if let handler = self.singleRequestResumed { self.callAsyncEventHandler { handler(self, idx, request) } }
-            } else if notification.name == Notification.Name.WebRequest.DidStart {
-                if let handler = self.singleRequestStarted { self.callAsyncEventHandler { handler(self, idx, request) } }
-            } else if notification.name == Notification.Name.WebRequest.DidSuspend {
-                if let handler = self.singleRequestSuspended { self.callAsyncEventHandler { handler(self, idx, request) } }
-            } else if notification.name == Notification.Name.WebRequest.StateChanged {
-                if let state = info[Notification.Name.WebRequest.Keys.State] as? WebRequest.State {
-                    if let handler = self.singleRequestStateChanged { self.callAsyncEventHandler { handler(self, idx, request, state) } }
-                }
-            }
-
         }
         
+        private func sendChildStateChangeEventNotification(childEventName: Notification.Name,
+                                                           childRequest: WebRequest,
+                                                           childIndex: Int,
+                                                           fromState: WebRequest.State,
+                                                           toState: WebRequest.ChangeState) {
+            
+            var userNotificationInfo: [AnyHashable: Any] = childRequest.generateNotificationUserInfoFor(childEventName, fromState: fromState, toState: toState) ?? [:]
+            userNotificationInfo[Notification.Name.WebRequest.Keys.ChildRequest] = childRequest
+            userNotificationInfo[Notification.Name.WebRequest.Keys.ChildIndex] = childIndex
+            
+            
+            NotificationCenter.default.post(name: Notification.Name(rawValue: childEventName.rawValue + "Child"),
+                                            object: self,
+                                            userInfo: userNotificationInfo)
+            
+        }
         
-        /// Resumes the task, if it is suspended.
+        private func childRequestStateChanged(request: WebRequest,
+                                              fromState: WebRequest.State,
+                                              toState: WebRequest.ChangeState) -> Void {
+            guard !self.completionHandler.hasCalled else { return }
+            
+            
+            guard let idx = self.requests.firstIndex(of: request) else { return }
+            
+            let (childNotification, doCompleteCheck, event) = {
+                    () -> (Notification.Name, Bool, ((GroupRequest, Int, WebRequest) -> Void)?) in
+                switch toState {
+                    case .canceling:
+                        self.requestsFinished[idx] = true
+                        return (Notification.Name.WebRequest.DidCancel,
+                                true,
+                                self.singleRequestCancelled)
+                    case .completed:
+                        self.requestsFinished[idx] = true
+                        return (Notification.Name.WebRequest.DidComplete,
+                                true,
+                                self.singleRequestCompleted)
+                    case .starting:
+                        return (Notification.Name.WebRequest.DidStart,
+                                false,
+                                self.singleRequestStarted)
+                    case .running:
+                        return (Notification.Name.WebRequest.DidResume,
+                                false,
+                                self.singleRequestResumed)
+                    case .suspended:
+                        return (Notification.Name.WebRequest.DidSuspend,
+                                false,
+                                self.singleRequestSuspended)
+                }
+            }()
+            
+            if let handler = self.singleRequestStateChanged {
+                self.callAsyncEventHandler {
+                    handler(self, idx, request, toState.state)
+                }
+            }
+            /*
+            if let handler = self.singleRequestStateChangedFull {
+                self.callAsyncEventHandler {
+                    handler(self, idx, request, fromState, toState)
+                }
+            }
+            */
+            self.sendChildStateChangeEventNotification(childEventName: Notification.Name.WebRequest.StateChanged,
+                                                       childRequest: request,
+                                                       childIndex: idx,
+                                                       fromState: fromState,
+                                                       toState: toState)
+            
+            if let handler = event {
+                self.callAsyncEventHandler {
+                    handler(self, idx, request)
+                }
+            }
+            
+            self.sendChildStateChangeEventNotification(childEventName: childNotification,
+                                                       childRequest: request,
+                                                       childIndex: idx,
+                                                       fromState: fromState,
+                                                       toState: toState)
+            
+            
+            if doCompleteCheck {
+                checkForCompletion(statusChange: toState)
+            }
+            
+        }
+        
         public override func resume() {
+            guard self.state == .suspended else { return }
+            self._previousState = .running
             
             if self.suspendedRequests.count == 0 { self.operationQueue.isSuspended = false }
             else {
@@ -368,13 +446,15 @@ public extension WebRequest {
                 self.suspendedRequests.removeAll()
             }
             
-            //Ensures we call the super so proper events get signaled
-            super.resume()
+            self.triggerStateChange(from: .suspended, to: .running)
         }
         
         
-        /// Temporarily suspends a task.
         public override func suspend() {
+            guard self.state == .running else { return }
+            self._previousState = .suspended
+            self.triggerStateChange(from: .running, to: .suspended)
+            
             guard self.suspendedRequests.count == 0 else { return }
             
             for (i, r) in self.requests.enumerated() {
@@ -385,12 +465,30 @@ public extension WebRequest {
                 for i in self.suspendedRequests { self.requests[i].suspend() }
             }
             
-            //Ensures we call the super so proper events get signaled
-            super.suspend()
+            
         }
         
-        /// Cancels the task
         public override func cancel() {
+            let currentState = self.state
+            guard currentState == .running || currentState == .suspended else { return }
+            
+            self.hasBeenCancelled = true
+            self.triggerStateChange(from: currentState, to: .canceling)
+            
+            // we don't set canceling because if we d
+            // and the completion handler is called it will see
+            // previous state and current state as the same
+            //self._previousState = .canceling
+            
+            self.completionHandler.withUpdatingLock { r in
+                guard !r.hasCalled else { return }
+                r.hasCalled = true
+                if let handler = r.handler {
+                    /// was async
+                    self.callSyncEventHandler { handler(self.requests) }
+                }
+            }
+            
             
             //Cancel all outstanding requests
             for r in self.requests {
@@ -398,11 +496,10 @@ public extension WebRequest {
                 r.cancel()
             }
             
-            self.hasBeenCancelled = true
+            
             self.operationQueue.cancelAllOperations()
             
-            //Ensures we call the super so proper events get signaled
-            super.cancel()
+            
         }
     }
 }

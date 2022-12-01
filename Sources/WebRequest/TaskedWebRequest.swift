@@ -12,6 +12,15 @@ import Foundation
     #endif
 #endif
 
+fileprivate func asNSError(_ error: Error?) -> NSError? {
+    guard let e = error else { return nil }
+    #if _runtime(_ObjC) || swift(>=4.1.4)
+    return (e as NSError)
+    #else
+    return e as? NSError
+    #endif
+}
+
 public protocol TaskedWebRequestResultsContainer {
     /// Empty any locally loaded WebRequest Data
     mutating func emptyLocallyLoadedData()
@@ -273,6 +282,13 @@ public extension WebRequest {
             self.results?.emptyLocallyLoadedData()
             self.results = nil
         }
+        
+        internal static func generateCanceledResults(for request: URLRequest) -> TaskedWebRequestResults {
+            return .init(request: request,
+                         response: nil,
+                         error: WebRequest.createCancelationError(forURL: request.url!),
+                         results: nil)
+        }
     }
     
     class TaskedWebRequest<CompletionResults>: WebRequest where CompletionResults: TaskedWebRequestResultsContainer {
@@ -288,6 +304,9 @@ public extension WebRequest {
         public var results: Results {
             return _results ?? Results(request: self.originalRequest!)
         }
+        
+        /// The last state set from the resume/suspend/cancel methods
+        private var _previousState: WebRequest.State = .suspended
         
         public override var state: WebRequest.State {
             //Some times completion handler gets called even though task state says its still running on linux
@@ -375,7 +394,7 @@ public extension WebRequest {
                                                                    results: results)
                 
                 self!._results = results
-                self!.triggerStateChange(.completed)
+                self!.triggerStateChange(from: self!._previousState, to: self!.state)
                 if let ch = completionHandler {
                     self!.callSyncEventHandler { ch(results) }
                 }
@@ -485,34 +504,44 @@ public extension WebRequest {
             self.eventDelegate.removeHandlers(withId: uid)
         }
         
-        /// Resumes the request, if it is suspended.
-        public override func resume() {
-            super.resume()
+        public override func resume()  {
+            guard self.state == .suspended else { return }
+            self._previousState = .running
+            self.triggerStateChange(from: .suspended, to: .running)
+            
             self.task.resume()
         }
         
-        /// Temporarily suspends a request.
         public override func suspend() {
-            super.suspend()
+            guard self.state == .running else { return }
+            self._previousState = .suspended
+            self.triggerStateChange(from: .running, to: .suspended)
+            
             self.task.suspend()
         }
         
-        /// Cancels the request
         public override func cancel() {
+            let currentState = self.state
+            guard currentState == .running || currentState == .suspended else { return }
+            
+            // we don't set canceling because if we d
+            // and the completion handler is called it will see
+            // previous state and current state as the same
+            //self._previousState = .canceling
             
             //Setup results for cancelled requests
             if !self.results.hasResponse {
                 self._results?.clearResults()
-                self._results = TaskedWebRequestResults<CompletionResults>(request: self.originalRequest!,
-                                                                   response: nil,
-                                                                   error: WebRequest.createCancelationError(forURL: self.originalRequest!.url!),
-                                                                   results: nil)
+                self._results = .generateCanceledResults(for: self.originalRequest!)
             }
             
-            super.cancel()
+            self.triggerStateChange(from: currentState, to: .canceling)
+            
             self.task.cancel()
             
         }
+        
+        
     }
 }
 

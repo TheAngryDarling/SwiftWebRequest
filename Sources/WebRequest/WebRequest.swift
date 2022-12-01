@@ -24,6 +24,58 @@ open class WebRequest: NSObject {
         case completed = 3
     }
     
+    public enum ChangeState {
+        /// The request was suspended by the app.
+        /// No further processing takes place until it is resumed. A request in this state is not subject to timeouts.
+        case suspended
+        /// The request is resuming for the first time
+        /// The task will have a state of running when checked
+        case starting
+        /// The request is currently being serviced by the session.
+        /// A task in this state is subject to the request and resource timeouts specified in the session configuration object.
+        case running
+        /// The request has received a cancel message.
+        ///The delegate may or may not have received a urlSession(_:task:didCompleteWithError:) message yet. A request in this state is not subject to timeouts.
+        case canceling
+        /// The request has completed (without being canceled), and the request's delegate receives no further callbacks.
+        /// If the request completed successfully, the request's error property is nil. Otherwise, it provides an error object that tells what went wrong. A request in this state is not subject to timeouts.
+        case completed
+        
+        /// Create a State object representing the change state
+        internal var state: State {
+            switch self {
+                case .suspended: return .suspended
+                case .starting, .running: return .running
+                case .canceling: return .canceling
+                case .completed: return .completed
+            }
+        }
+        /// Create a ChangeState object from a State object
+        ///
+        /// If the state is running and alreadyStarted is false then the change state will be starting
+        ///
+        /// - Parameters:
+        ///   - state: The state to create from
+        ///   - alreadyStarted: Indicator if the requet was already started
+        public init(_ state: State, alreadyStarted: Bool) {
+            switch state {
+                case .suspended: self = .suspended
+                case .running:
+                    if !alreadyStarted { self = .starting }
+                    else { self = .running }
+                case .canceling: self = .canceling
+                case .completed: self = .completed
+            }
+        }
+        
+        /// Create a ChangeState object from a State object
+        /// - Parameter state: The state to create from
+        public init(_ state: State) {
+            self.init(state, alreadyStarted: true)
+        }
+        
+    }
+    
     /// Synchronized resource around indicator if the web request has started yet
     private let _hasStarted: ResourceLock<Bool> = .init(resource: false)
     /// Indicator if the web request has started yet
@@ -68,6 +120,10 @@ open class WebRequest: NSObject {
     
     /// Event handler that gets triggered when the requests state changes
     public var requestStateChanged: ((WebRequest, WebRequest.State) -> Void)? = nil
+    
+    private var requestStateChangedHandlers: ResourceLock<[String: (WebRequest,
+                                                       WebRequest.State,
+                                                                    WebRequest.ChangeState) -> Void]> = .init(resource: [:])
     
     /// An object for users to store any additional information regarding the request
     private var _userInfo: ResourceLock<[String: Any]> = .init(resource: [:])
@@ -117,24 +173,79 @@ open class WebRequest: NSObject {
             }
             waitCallbacks = []
         }
+        self.requestStateChangedHandlers.withUpdatingLock { dict in
+            dict = [:]
+        }
     }
     
-    internal func triggerStateChange(_ state: WebRequest.State) {
+    internal func generateNotificationUserInfoFor(_ notificationName: Notification.Name,
+                                                  fromState: State,
+                                                  toState: ChangeState) -> [AnyHashable : Any]? {
+        guard (notificationName == Notification.Name.WebRequest.StateChanged ||
+                notificationName == Notification.Name.WebRequest.StateChangedChild) else {
+                return nil
+        }
+        
+        return [
+            Notification.Name.WebRequest.Keys.State: toState.state,
+            Notification.Name.WebRequest.Keys.ToState: toState,
+            Notification.Name.WebRequest.Keys.FromState: fromState,
+        ]
+    }
+    
+    private func sendNotification(_ notificationName: Notification.Name,
+                                  fromState: WebRequest.State,
+                                  toState: WebRequest.ChangeState) {
+        let nc = NotificationCenter.default
+        nc.post(name: notificationName,
+                object: self,
+                userInfo: self.generateNotificationUserInfoFor(notificationName,
+                                                               fromState: fromState,
+                                                               toState: toState))
+    }
+    
+    internal func _triggerStateChange(from fromState: WebRequest.State,
+                                      to toState: WebRequest.State,
+                                      file: StaticString,
+                                      line: UInt) {
         // synchronize access to this method
         self.stateChangeLock.lock()
         defer { self.stateChangeLock.unlock() }
         
-        if let handler = requestStateChanged {
+        guard fromState != toState else {
+            return
+        }
+        let toStateChange = ChangeState(toState, alreadyStarted: self.hasStarted)
+        
+        
+        if let handler = self.requestStateChanged {
             callAsyncEventHandler {
-                handler(self, state)
+                handler(self, toState)
             }
         }
+        
+        // Lets get a copy of all state change handlers
+        let stateChangeHandlers = self.requestStateChangedHandlers.withUpdatingLock { handlers in
+            return handlers.values
+        }
+        // Lets trigger the registered state handlers
+        for handler in stateChangeHandlers {
+            self.callAsyncEventHandler {
+            //self.callSyncEventHandler {
+                handler(self, fromState, toStateChange)
+            }
+        }
+        
+        
+        
         var triggerDoneGroup: Bool = false
         let event: ((WebRequest) -> Void)? = {
             switch state {
                 case .completed:
-                    NotificationCenter.default.post(name: Notification.Name.WebRequest.DidComplete, object: self)
-                    // flag that will eventuall release any wait calls
+                    self.sendNotification(Notification.Name.WebRequest.DidComplete,
+                                          fromState: fromState,
+                                          toState: toStateChange)
+                    // flag that will eventually release any wait calls
                     triggerDoneGroup = true
                     // change running indicator to false
                     self._isRunning.value = false
@@ -142,7 +253,9 @@ open class WebRequest: NSObject {
                     self._hasCompleted.value = true
                     return self.requestCompleted
                 case .canceling:
-                    NotificationCenter.default.post(name: Notification.Name.WebRequest.DidCancel, object: self)
+                    self.sendNotification(Notification.Name.WebRequest.DidCancel,
+                                          fromState: fromState,
+                                          toState: toStateChange)
                     // flag that will eventuall release any wait calls
                     triggerDoneGroup = true
                     // change running indicator to false
@@ -151,36 +264,44 @@ open class WebRequest: NSObject {
                     self._hasCompleted.value = true
                     return self.requestCancelled
                 case .suspended:
-                    NotificationCenter.default.post(name: Notification.Name.WebRequest.DidSuspend, object: self)
+                    self.sendNotification(Notification.Name.WebRequest.DidSuspend,
+                                          fromState: fromState,
+                                          toState: toStateChange)
                     return self.requestSuspended
                 case .running:
+                    var notificationName = Notification.Name.WebRequest.DidResume
+                    var rtnEventFnc = self.requestResumed
                     if !self._hasStarted.valueThenSet(to: true) {
                         
-                        NotificationCenter.default.post(name: Notification.Name.WebRequest.DidStart, object: self)
+                        notificationName = Notification.Name.WebRequest.DidStart
                         // change running indicator to true
                         self._isRunning.value = true
                         // change has completed indicator to false
                         self._hasCompleted.value = false
-                        return self.requestStarted
-                    } else {
-                        NotificationCenter.default.post(name: Notification.Name.WebRequest.DidResume, object: self)
-                        return self.requestResumed
+                        rtnEventFnc = self.requestStarted
                     }
+                    self.sendNotification(notificationName,
+                                          fromState: fromState,
+                                          toState: toStateChange)
+                    return rtnEventFnc
             }
         }()
         
         
         if let handler = event {
-            callAsyncEventHandler {
+            //callAsyncEventHandler {
+            self.callSyncEventHandler {
                 handler(self)
             }
         }
         
-        NotificationCenter.default.post(name: Notification.Name.WebRequest.StateChanged,
-                                        object: self,
-                                        userInfo: [Notification.Name.WebRequest.Keys.State: state])
+        self.sendNotification(Notification.Name.WebRequest.StateChanged,
+                              fromState: fromState,
+                              toState: toStateChange)
         if triggerDoneGroup {
+            
             self.waitCompletionCallbacks.withUpdatingLock { r in
+                // trigger wait events
                 for waitEvent in r {
                     waitEvent()
                 }
@@ -188,6 +309,23 @@ open class WebRequest: NSObject {
             }
         }
     }
+    
+    #if swift(>=5.3)
+    internal func triggerStateChange(from fromState: WebRequest.State,
+                                     to toState: WebRequest.State,
+                                     file: StaticString = #filePath,
+                                     line: UInt = #line) {
+        self._triggerStateChange(from: fromState, to: toState, file: file, line: line)
+    }
+    #else
+    internal func triggerStateChange(from fromState: WebRequest.State,
+                                     to toState: WebRequest.State,
+                                     file: StaticString = #file,
+                                     line: UInt = #line) {
+        self._triggerStateChange(from: fromState, to: toState, file: file, line: line)
+    }
+    #endif
+
     
     
     
@@ -215,25 +353,70 @@ open class WebRequest: NSObject {
         }
     }
     
+    /// Register a state changed handler
+    /// - Parameters:
+    ///   - handlerID: The unique ID to use when registering the handler.  This ID can be used to remove the handler later.  If the ID was not unique a precondition error will occure
+    ///   - handler: The state change handler to be called
+    public func registerStateChangedHandler(handlerID: String,
+                                            handler: @escaping (_ request: WebRequest,
+                                                                _ from: WebRequest.State,
+                                                                _ to: WebRequest.ChangeState) -> Void) {
+        
+        self.requestStateChangedHandlers.withUpdatingLock { dict in
+            guard !dict.keys.contains(handlerID) else {
+                preconditionFailure("Handler ID Already exists")
+            }
+            dict[handlerID] = handler
+        }
+    }
+    
+    /// Register a state changed handler
+    /// - Parameter handler: The state change handler to be called
+    /// - Returns: Returns the unique ID for the handler tha  can be used to remove the handle later
+    @discardableResult
+    public func registerStateChangedHandler(handler: @escaping (_ request: WebRequest,
+                                                                _ from: WebRequest.State,
+                                                                _ to: WebRequest.ChangeState) -> Void) -> String {
+        let uid = UUID().uuidString
+        self.registerStateChangedHandler(handlerID: uid, handler: handler)
+        return uid
+    }
+    
+    /// Removes a handler
+    /// - Parameter id: The unique ID of the handler to remove
+    /// - Returns: Returns an indicator if a handler was removed
+    @discardableResult
+    public func unregisterStateChangedHandler(for id: String) -> Bool {
+        return self.requestStateChangedHandlers.withUpdatingLock { dict in
+            return dict.removeValue(forKey: id) != nil
+        }
+    }
+    
+    
+    
     /// Starts/resumes the task, if it is suspended.
+    /// Returns: Bool indicator if the call was successful or not
     open func resume() {
         guard type(of: self) != WebRequest.self else { fatalError("Not Impelemented") }
         guard self.state == .suspended else { return }
         
-        self.triggerStateChange(.running)
+        self.triggerStateChange(from: .suspended, to: .running)
         
     }
     /// Temporarily suspends a task.
+    /// Returns: Bool indicator if the call was successful or not
     open func suspend() {
         guard type(of: self) != WebRequest.self else { fatalError("Not Impelemented") }
         guard self.state == .running else { return }
-        self.triggerStateChange(.suspended)
+        self.triggerStateChange(from: .running, to: .suspended)
     }
     /// Cancels the task
+    /// Returns: Bool indicator if the call was successful or not 
     open func cancel() {
         guard type(of: self) != WebRequest.self else { fatalError("Not Impelemented") }
-        guard self.state == .running || self.state == .suspended else { return }
-        self.triggerStateChange(.canceling)
+        let currentState = self.state
+        guard currentState == .running || currentState == .suspended else { return }
+        self.triggerStateChange(from: currentState, to: .canceling)
     }
     
     /// Wait until request is completed.  There is no guarentee that the completion events were called before this method returns

@@ -59,6 +59,10 @@ internal class SharedResourceLock<Resource, Lock>: NSLocking where Lock: NSLocki
     }
 }
 
+extension SharedResourceLock: CustomStringConvertible {
+    public var description: String { return "\(self._resource)" }
+}
+
 /// Class that synchronizing access to a resource using a lock
 internal class ResourceLock<Resource>: SharedResourceLock<Resource, NSLock> {
     /// Dependant locks of this resource

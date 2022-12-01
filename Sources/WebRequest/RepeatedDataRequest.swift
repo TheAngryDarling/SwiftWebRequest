@@ -371,18 +371,17 @@ public extension WebRequest {
         ///   - queue: The Dispatch Queue to create the new new request on
         private func scheduleNewRequest(deadline: DispatchTime,
                                         in queue: DispatchQueue = .global()) {
-            queue.asyncAfter(deadline: deadline) { [weak self] in
-                guard let s = self else { return }
-                guard s.state == .running else { return }
+            queue.asyncAfter(deadline: deadline) {
+                guard self.state == .running else { return }
                 
-                s.repeatCount += 1
-                s.createRequest(repeatCount: s.repeatCount)
+                self.repeatCount += 1
+                self.createRequest(repeatIteration: self.repeatCount)
             }
         }
         
         /// Create and execute a request
         /// - Parameter repeatCount: The current repeat count
-        private func createRequest(repeatCount: Int) {
+        private func createRequest(repeatIteration repeatCount: Int) {
             
             self.currentRequest =  {
                 guard repeatCount > 0 else { return self.originalRequest }
@@ -452,10 +451,11 @@ public extension WebRequest {
                     
                     
                     let finishState = (currentSelf.webRequest?.state ?? .completed)
+                    let currentState = currentSelf._state
                     currentSelf._state = finishState
                     currentSelf._error = err
                     // We are no longer repeating.  Lets trigger the proper event handlers.
-                    currentSelf.triggerStateChange(finishState)
+                    currentSelf.triggerStateChange(from: currentState, to: finishState)
                     
                     
                     currentSelf.completionHandler.withUpdatingLock { r in
@@ -491,75 +491,55 @@ public extension WebRequest {
             self.webRequest?.resume()
         }
         
-        // Resumes the task, if it is suspended.
         public override func resume() {
-            guard self._state == .suspended else { return }
-            
-            //Ensures we call the super so proper events get signaled
-            super.resume()
+            guard self.state == .suspended else { return }
             self._state = .running
+            self.triggerStateChange(from: .suspended, to: .running)
             
             if let r = self.webRequest { r.resume() }
             else {
                 // Must create sub request
-                self.createRequest(repeatCount: 0)
+                self.createRequest(repeatIteration: 0)
             }
-            
-           
         }
         
         
-        // Temporarily suspends a task.
-        public override func suspend() {
-            guard self._state == .running else { return }
-            
-            //Ensures we call the super so proper events get signaled
-            super.suspend()
+        public override func suspend()  {
+            guard self.state == .running else { return }
             self._state = .suspended
+            self.triggerStateChange(from: .running, to: .suspended)
+            
             if let r = self.webRequest { r.suspend() }
             
         }
         
-        // Cancels the task
         public override func cancel() {
-            guard self._state != .canceling && self._state != .completed else { return }
+            let currentState = self.state
+            guard currentState == .running || currentState == .suspended else { return }
+            self._state = .canceling
             
-            let cancelledResults = DataRequest.Results(request: self.currentRequest,
-                                              response: nil,
-                                              error: DataRequest.createCancelationError(forURL: self.currentRequest.url!),
-                                              data: self.webRequest?.results.data)
+            let cancelledResults = DataRequest.Results.generateCanceledResults(for: self.currentRequest)
+            
             
             self.results = .init(object: nil,
                                  dataResults: cancelledResults)
             
-            // If we cancel with no child request
-            if self.webRequest == nil ||
-                // Or has a child request without a resposne
-               !(self.webRequest?.results.hasResponse ?? false) ||
-                // Or a child request with a canceling resposne
-               (self.webRequest?.state == .canceling) {
+            self.triggerStateChange(from: currentState, to: .canceling)
+            
+            self.completionHandler.withUpdatingLock { r in
+                guard !r.hasCalled else { return }
+                r.hasCalled = true
                 
-                self.completionHandler.withUpdatingLock { r in
-                    r.hasCalled = true
-                    
-                    
-                    if let f = r.handler {
-                        /// was async
-                        self.callSyncEventHandler {
-                            f(cancelledResults, nil, cancelledResults.error)
-                        }
+                if let f = r.handler {
+                    /// was async
+                    self.callSyncEventHandler {
+                        f(cancelledResults, nil, cancelledResults.error)
                     }
                 }
-                
-                
-                
             }
             
             //Cancel all outstanding requests
             self.cancelRequest()
-            //Ensures we call the super so proper events get signaled
-            super.cancel()
-            self._state = .canceling
             
         }
         
