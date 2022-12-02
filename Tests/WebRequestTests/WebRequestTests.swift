@@ -426,7 +426,10 @@ final class WebRequestTests: XCTestCase {
         let session = URLSession(configuration: URLSessionConfiguration.default)
         let req = testURLSearch
         let sig = DispatchSemaphore(value: 0)
-        let r = WebRequest.RepeatedDataRequest<Void>(req, usingSession: session, repeatHandler: repeatHandler) { rs, r, e in
+        let r = WebRequest.RepeatedDataRequest<Void>(req,
+                                                     usingSession: session,
+                                                     repeatInterval: 1,
+                                                     repeatHandler: repeatHandler) { rs, r, e in
             
             #if !DOCKER_ALL_BUILD
             print("All Done!")
@@ -506,6 +509,7 @@ final class WebRequestTests: XCTestCase {
         let sig = DispatchSemaphore(value: 0)
         let r = WebRequest.RepeatedDataRequest<Void>(req,
                                                      usingSession: session,
+                                                     repeatInterval: 1,
                                                      repeatHandler: repeatHandler) { rs, r, e in
             #if !DOCKER_ALL_BUILD
             print("All Done!")
@@ -558,9 +562,10 @@ final class WebRequestTests: XCTestCase {
         let req = testURLSearch
         let sig = DispatchSemaphore(value: 0)
         let r = WebRequest.RepeatedDataRequest<Void>(req,
-                                                 updateRequestDetails: updateRequestDetails,
-                                                 usingSession: session,
-                                                 repeatHandler: repeatHandler) { rs, r, e in
+                                                     updateRequestDetails: updateRequestDetails,
+                                                     usingSession: session,
+                                                     repeatInterval: 1,
+                                                     repeatHandler: repeatHandler) { rs, r, e in
             
             #if !DOCKER_ALL_BUILD
             print("All Done!")
@@ -616,9 +621,10 @@ final class WebRequestTests: XCTestCase {
         let req = testURLSearch
         let sig = DispatchSemaphore(value: 0)
         let r = WebRequest.RepeatedDataRequest<Void>(req,
-                                                 updateRequestDetails: updateRequestDetails,
-                                                 usingSession: session,
-                                                 repeatHandler: repeatHandler) { rs, r, e in
+                                                     updateRequestDetails: updateRequestDetails,
+                                                     usingSession: session,
+                                                     repeatInterval: 1,
+                                                     repeatHandler: repeatHandler) { rs, r, e in
             
             #if !DOCKER_ALL_BUILD
             print("All Done!")
@@ -739,7 +745,7 @@ final class WebRequestTests: XCTestCase {
             #endif
         }
         
-        let timeout: TimeInterval = 20
+        let timeout: TimeInterval = 2//20
         
         let waitQueue = DispatchQueue(label: "EventRequestWait")
         waitQueue.async {
