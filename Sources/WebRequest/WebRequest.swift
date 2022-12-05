@@ -144,6 +144,28 @@ open class WebRequest: NSObject {
     /// Custom Name identifing this request
     public let name: String?
     
+    /// The date / time the request started
+    private var requestStartTime: Date? = nil
+    /// the date / time the request ended
+    private var requestEndTime: Date? = nil
+    /// Returns the duration from the start of the request to the completion.
+    /// If the request has not completed this will return nil
+    public var requestCompleteDuration: TimeInterval? {
+        guard let stRD = self.requestStartTime,
+              let edRD = self.requestEndTime else {
+            return nil
+        }
+        return edRD.timeIntervalSince(stRD).magnitude
+    }
+    /// Returns the duration since the start of the request.
+    /// If the request has not started then this will return 0
+    public var requestCurrentDuration: TimeInterval {
+        guard let stRD = self.requestStartTime else {
+            return 0.0
+        }
+        return Date().timeIntervalSince(stRD).magnitude
+    }
+    
     /// Object used to synchronize access to triggerStateChange function
     private let stateChangeLock = NSLock()
     
@@ -242,6 +264,7 @@ open class WebRequest: NSObject {
         let event: ((WebRequest) -> Void)? = {
             switch state {
                 case .completed:
+                    self.requestEndTime = Date()
                     self.sendNotification(Notification.Name.WebRequest.DidComplete,
                                           fromState: fromState,
                                           toState: toStateChange)
@@ -253,6 +276,7 @@ open class WebRequest: NSObject {
                     self._hasCompleted.value = true
                     return self.requestCompleted
                 case .canceling:
+                    self.requestEndTime = Date()
                     self.sendNotification(Notification.Name.WebRequest.DidCancel,
                                           fromState: fromState,
                                           toState: toStateChange)
@@ -272,6 +296,8 @@ open class WebRequest: NSObject {
                     var notificationName = Notification.Name.WebRequest.DidResume
                     var rtnEventFnc = self.requestResumed
                     if !self._hasStarted.valueThenSet(to: true) {
+                        self.requestStartTime = Date()
+                        self.requestEndTime = nil
                         
                         notificationName = Notification.Name.WebRequest.DidStart
                         // change running indicator to true
