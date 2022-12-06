@@ -524,10 +524,7 @@ public extension WebRequest {
             let currentState = self.state
             guard currentState == .running || currentState == .suspended else { return }
             
-            // we don't set canceling because if we d
-            // and the completion handler is called it will see
-            // previous state and current state as the same
-            //self._previousState = .canceling
+            self._previousState = .canceling
             
             //Setup results for cancelled requests
             if !self.results.hasResponse {
