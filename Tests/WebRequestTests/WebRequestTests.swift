@@ -9,6 +9,14 @@ import LittleWebServer
 #endif
 
 
+#if !swift(>=5.0)
+fileprivate extension DispatchSemaphore {
+    func fulfill() {
+        self.signal()
+    }
+}
+#endif
+
 extension URL {
     func appendingQueryItem(_ name: String, withValue value: String) -> URL {
         var components = URLComponents(url: self, resolvingAgainstBaseURL: true)!
@@ -236,28 +244,144 @@ final class WebRequestTests: XCTestCase {
         signal(4, sigHandler)
     }
     func testSingleRequest() {
-        let sig = DispatchSemaphore(value: 0)
-        //print("Creating base session")
-        let session = URLSession(configuration: URLSessionConfiguration.default)
-        //print("Creating url")
         let testURL = testURLSearch.appendingQueryItem("q=Swift")
-        //print("Creating request")
-        let request = WebRequest.DataRequest(testURL, usingSession: session) { r in
-            XCTAssertNil(r.error, "Expected no Error but found '\(r.error as Any)'")
-            guard let s = r.responseString() else {
-                XCTFail("Unable to convert resposne into string: \(r.data as Any)")
-                sig.signal()
-                return
-            }
-            XCTAssertEqual(s, "Query?q=Swift", "Expected response to match")
-            
-            sig.signal()
-        }
-        //print("Starting request")
-        request.resume()
-        //print("Waiting for request to finish")
-        request.waitUntilComplete()
-        sig.wait()
+                
+                if true {
+                    #if _runtime(_ObjC) || swift(>=5.0)
+                    let requestStartedExpect = self.expectation(description: "requestStarted")
+                    let requestCompletedExpect = self.expectation(description: "requestCompleted")
+                    let requestCompletionExpect = self.expectation(description: "requestCompletion")
+                    #else
+                    let requestStartedExpect = DispatchSemaphore(value: 0)
+                    let requestCompletedExpect = DispatchSemaphore(value: 0)
+                    let requestCompletionExpect = DispatchSemaphore(value: 0)
+                    #endif
+                    //print("Creating base session")
+                    let session = URLSession(configuration: URLSessionConfiguration.default)
+                    
+                    //print("Creating request")
+                    let request = WebRequest.DataRequest(testURL, usingSession: session) { r in
+                        defer { requestCompletionExpect.fulfill() }
+                        XCTAssertNil(r.error, "Expected no Error but found '\(r.error as Any)'")
+                        guard let s = r.responseString() else {
+                            XCTFail("Unable to convert resposne into string: \(r.data as Any)")
+                            return
+                        }
+                        XCTAssertEqual(s, "Query?q=Swift", "Expected response to match")
+                        
+                    }
+                    request.requestStarted = { _ in
+                        requestStartedExpect.fulfill()
+                    }
+                    request.requestCompleted = { _ in
+                        requestCompletedExpect.fulfill()
+                    }
+                    var changedStates: [WebRequest.ChangeState] = []
+                    request.registerStateChangedHandler { request, from, to in
+                        changedStates.append(to)
+                    }
+                    request.resume()
+                    request.waitUntilComplete()
+                    
+                    #if _runtime(_ObjC) || swift(>=5.0)
+                    self.wait(for: [requestStartedExpect,
+                                    requestCompletedExpect,
+                                    requestCompletionExpect],
+                                 timeout: 10)
+                    #else
+                    if requestStartedExpect.wait(timeout: .now() + 10) == .timedOut {
+                        XCTFail("Failed expectation request started")
+                    }
+                    if requestCompletedExpect.wait(timeout: .now() + 10) == .timedOut {
+                        XCTFail("Failed expectation request completed")
+                    }
+                    if requestCompletionExpect.wait(timeout: .now() + 10) == .timedOut {
+                        XCTFail("Failed expectation request completion")
+                    }
+                    #endif
+                    
+                    
+                    XCTAssertTrue(changedStates.contains(.starting))
+                    XCTAssertTrue(changedStates.contains(.completed))
+                    
+                }
+                if true {
+                    #if _runtime(_ObjC) || swift(>=5.0)
+                    let requestStartedExpect = self.expectation(description: "requestStarted")
+                    let requestCancelledExpect = self.expectation(description: "requestCancelled")
+                    let requestCompletionExpect = self.expectation(description: "requestCompletion")
+                    #else
+                    let requestStartedExpect = DispatchSemaphore(value: 0)
+                    let requestCancelledExpect = DispatchSemaphore(value: 0)
+                    let requestCompletionExpect = DispatchSemaphore(value: 0)
+                    #endif
+                    
+                    
+                    
+                    let session = URLSession(configuration: URLSessionConfiguration.default)
+                    
+                    let request = WebRequest.DataRequest(testURL.appendingQueryItem("sleep=5"), usingSession: session) { r in
+                        defer { requestCompletionExpect.fulfill() }
+                        guard let e = r.error else {
+                            XCTFail("Missing error value")
+                            return
+                        }
+                        #if _runtime(_ObjC) || swift(>=4.2)
+                        XCTAssertEqual((e as NSError).code,
+                                       NSURLErrorCancelled,
+                                       "Invalid NS Error Code")
+                        #else
+                        if let nsError = e as? NSError {
+                            XCTAssertEqual(nsError.code,
+                                           NSURLErrorCancelled,
+                                           "Invalid NS Error Code")
+                        } else if let urlError = e as? URLError {
+                            XCTAssertEqual(urlError.code,
+                                           .cancelled,
+                                           "Invalid Error Code")
+                        } else {
+                            XCTFail("Unexpected error: \(e)")
+                        }
+                        #endif
+                        
+                    }
+                    request.requestStarted = { _ in
+                        requestStartedExpect.fulfill()
+                        request.cancel()
+                    }
+                    request.requestCancelled = { _ in
+                        requestCancelledExpect.fulfill()
+                    }
+                    var changedStates: [WebRequest.ChangeState] = []
+                    request.registerStateChangedHandler { request, from, to in
+                        changedStates.append(to)
+                    }
+                    //print("Starting request")
+                    request.resume()
+                    //print("Waiting for request to finish")
+                    request.waitUntilComplete()
+                    
+                    #if _runtime(_ObjC) || swift(>=5.0)
+                    self.wait(for: [requestStartedExpect,
+                                    requestCancelledExpect,
+                                    requestCompletionExpect],
+                                 timeout: 10)
+                    #else
+                    if requestStartedExpect.wait(timeout: .now() + 10) == .timedOut {
+                        XCTFail("Failed expectation request started")
+                    }
+                    if requestCancelledExpect.wait(timeout: .now() + 10) == .timedOut {
+                        XCTFail("Failed expectation request cancelled")
+                    }
+                    if requestCompletionExpect.wait(timeout: .now() + 10) == .timedOut {
+                        XCTFail("Failed expectation request completion")
+                    }
+                    #endif
+                    
+                    
+                    XCTAssertTrue(changedStates.contains(.starting))
+                    XCTAssertTrue(changedStates.contains(.canceling))
+                }
     }
     
     func testMultiRequest() {
