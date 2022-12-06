@@ -262,7 +262,7 @@ open class WebRequest: NSObject {
         
         var triggerDoneGroup: Bool = false
         let event: ((WebRequest) -> Void)? = {
-            switch state {
+            switch toState {
                 case .completed:
                     self.requestEndTime = Date()
                     self.sendNotification(Notification.Name.WebRequest.DidComplete,
@@ -315,8 +315,7 @@ open class WebRequest: NSObject {
         
         
         if let handler = event {
-            //callAsyncEventHandler {
-            self.callSyncEventHandler {
+            self.callAsyncEventHandler {
                 handler(self)
             }
         }
