@@ -97,6 +97,13 @@ final class WebRequestTests: XCTestCase {
             let initialValue = "Query"
             var rtn: String = initialValue
             
+            // Allow the client to slow down the response
+            if let q = request.queryItems.first(where: { return $0.name == "sleep" }),
+               let qValue = q.value,
+               let dValue = Double(qValue) {
+                Thread.sleep(forTimeInterval: dValue)
+            }
+            
             if let param = request.queryItems.first(where: { return $0.name == "q" }) {
                 if rtn == initialValue { rtn += "?" }
                 else { rtn += "&"}
@@ -116,6 +123,14 @@ final class WebRequestTests: XCTestCase {
         let eventSuffixData = ", \"event_up\": true }\n".data(using: .utf8)!
         
         WebRequestTests.server?.defaultHost["/events"] = { (request: LittleWebServer.HTTP.Request) -> LittleWebServer.HTTP.Response in
+            
+            var sleepValue: Double? = nil
+            // Allow the client to slow down the response
+            if let q = request.queryItems.first(where: { return $0.name == "sleep" }),
+               let qValue = q.value,
+               let dValue = Double(qValue) {
+                sleepValue = dValue
+            }
             
             func eventWriter(_ input: LittleWebServerInputStream, _ output: LittleWebServerOutputStream) {
                 var count: Int = 0
@@ -144,7 +159,9 @@ final class WebRequestTests: XCTestCase {
                         }
                         break
                     }
-                    //Thread.sleep(forTimeInterval: 0.05)
+                    if let s = sleepValue {
+                        Thread.sleep(forTimeInterval: s)
+                    }
                 }
                 if output.isConnected {
                     // If we're still connected we send a 0 byte line
