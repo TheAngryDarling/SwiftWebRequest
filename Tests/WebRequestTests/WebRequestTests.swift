@@ -9,6 +9,42 @@ import LittleWebServer
 #endif
 
 
+#if swift(>=5.5)
+extension XCTestCase {
+    func runAsyncTest(
+        named testName: String = #function,
+        in file: StaticString = #file,
+        at line: UInt = #line,
+        withTimeout timeout: TimeInterval = 10,
+        test: @escaping () async throws -> Void
+    ) {
+        var thrownError: Error?
+        let errorHandler = { thrownError = $0 }
+        let expectation = expectation(description: testName)
+
+        Task {
+            do {
+                try await test()
+            } catch {
+                errorHandler(error)
+            }
+
+            expectation.fulfill()
+        }
+
+        waitForExpectations(timeout: timeout)
+
+        if let error = thrownError {
+            XCTFail(
+                "Async error thrown: \(error)",
+                file: file,
+                line: line
+            )
+        }
+    }
+}
+#endif
+
 #if !swift(>=5.0)
 fileprivate extension DispatchSemaphore {
     func fulfill() {
@@ -245,144 +281,233 @@ final class WebRequestTests: XCTestCase {
     }
     func testSingleRequest() {
         let testURL = testURLSearch.appendingQueryItem("q=Swift")
+        
+        if true {
+            #if _runtime(_ObjC) || swift(>=5.0)
+            let requestStartedExpect = self.expectation(description: "requestStarted")
+            let requestCompletedExpect = self.expectation(description: "requestCompleted")
+            let requestCompletionExpect = self.expectation(description: "requestCompletion")
+            #else
+            let requestStartedExpect = DispatchSemaphore(value: 0)
+            let requestCompletedExpect = DispatchSemaphore(value: 0)
+            let requestCompletionExpect = DispatchSemaphore(value: 0)
+            #endif
+            //print("Creating base session")
+            let session = URLSession(configuration: URLSessionConfiguration.default)
+            
+            //print("Creating request")
+            let request = WebRequest.DataRequest(testURL, usingSession: session) { r in
+                defer { requestCompletionExpect.fulfill() }
+                XCTAssertNil(r.error, "Expected no Error but found '\(r.error as Any)'")
+                guard let s = r.responseString() else {
+                    XCTFail("Unable to convert resposne into string: \(r.data as Any)")
+                    return
+                }
+                XCTAssertEqual(s, "Query?q=Swift", "Expected response to match")
                 
-                if true {
-                    #if _runtime(_ObjC) || swift(>=5.0)
-                    let requestStartedExpect = self.expectation(description: "requestStarted")
-                    let requestCompletedExpect = self.expectation(description: "requestCompleted")
-                    let requestCompletionExpect = self.expectation(description: "requestCompletion")
-                    #else
-                    let requestStartedExpect = DispatchSemaphore(value: 0)
-                    let requestCompletedExpect = DispatchSemaphore(value: 0)
-                    let requestCompletionExpect = DispatchSemaphore(value: 0)
-                    #endif
-                    //print("Creating base session")
-                    let session = URLSession(configuration: URLSessionConfiguration.default)
-                    
-                    //print("Creating request")
-                    let request = WebRequest.DataRequest(testURL, usingSession: session) { r in
-                        defer { requestCompletionExpect.fulfill() }
-                        XCTAssertNil(r.error, "Expected no Error but found '\(r.error as Any)'")
-                        guard let s = r.responseString() else {
-                            XCTFail("Unable to convert resposne into string: \(r.data as Any)")
-                            return
-                        }
-                        XCTAssertEqual(s, "Query?q=Swift", "Expected response to match")
-                        
-                    }
-                    request.requestStarted = { _ in
-                        requestStartedExpect.fulfill()
-                    }
-                    request.requestCompleted = { _ in
-                        requestCompletedExpect.fulfill()
-                    }
-                    var changedStates: [WebRequest.ChangeState] = []
-                    request.registerStateChangedHandler { request, from, to in
-                        changedStates.append(to)
-                    }
-                    request.resume()
-                    request.waitUntilComplete()
-                    
-                    #if _runtime(_ObjC) || swift(>=5.0)
-                    self.wait(for: [requestStartedExpect,
-                                    requestCompletedExpect,
-                                    requestCompletionExpect],
-                                 timeout: 10)
-                    #else
-                    if requestStartedExpect.wait(timeout: .now() + 10) == .timedOut {
-                        XCTFail("Failed expectation request started")
-                    }
-                    if requestCompletedExpect.wait(timeout: .now() + 10) == .timedOut {
-                        XCTFail("Failed expectation request completed")
-                    }
-                    if requestCompletionExpect.wait(timeout: .now() + 10) == .timedOut {
-                        XCTFail("Failed expectation request completion")
-                    }
-                    #endif
-                    
-                    
-                    XCTAssertTrue(changedStates.contains(.starting))
-                    XCTAssertTrue(changedStates.contains(.completed))
-                    
+            }
+            request.requestStarted = { _ in
+                requestStartedExpect.fulfill()
+            }
+            request.requestCompleted = { _ in
+                requestCompletedExpect.fulfill()
+            }
+            var changedStates: [WebRequest.ChangeState] = []
+            request.registerStateChangedHandler { request, from, to in
+                changedStates.append(to)
+            }
+            request.resume()
+            request.waitUntilComplete()
+            
+            #if _runtime(_ObjC) || swift(>=5.0)
+            self.wait(for: [requestStartedExpect,
+                            requestCompletedExpect,
+                            requestCompletionExpect],
+                         timeout: 10)
+            #else
+            if requestStartedExpect.wait(timeout: .now() + 10) == .timedOut {
+                XCTFail("Failed expectation request started")
+            }
+            if requestCompletedExpect.wait(timeout: .now() + 10) == .timedOut {
+                XCTFail("Failed expectation request completed")
+            }
+            if requestCompletionExpect.wait(timeout: .now() + 10) == .timedOut {
+                XCTFail("Failed expectation request completion")
+            }
+            #endif
+            
+            
+            XCTAssertTrue(changedStates.contains(.starting))
+            XCTAssertTrue(changedStates.contains(.completed))
+            
+        }
+        if true {
+            #if _runtime(_ObjC) || swift(>=5.0)
+            let requestStartedExpect = self.expectation(description: "requestStarted")
+            let requestCancelledExpect = self.expectation(description: "requestCancelled")
+            let requestCompletionExpect = self.expectation(description: "requestCompletion")
+            #else
+            let requestStartedExpect = DispatchSemaphore(value: 0)
+            let requestCancelledExpect = DispatchSemaphore(value: 0)
+            let requestCompletionExpect = DispatchSemaphore(value: 0)
+            #endif
+            
+            
+            
+            let session = URLSession(configuration: URLSessionConfiguration.default)
+            
+            let request = WebRequest.DataRequest(testURL.appendingQueryItem("sleep=5"), usingSession: session) { r in
+                defer { requestCompletionExpect.fulfill() }
+                guard let e = r.error else {
+                    XCTFail("Missing error value")
+                    return
                 }
-                if true {
-                    #if _runtime(_ObjC) || swift(>=5.0)
-                    let requestStartedExpect = self.expectation(description: "requestStarted")
-                    let requestCancelledExpect = self.expectation(description: "requestCancelled")
-                    let requestCompletionExpect = self.expectation(description: "requestCompletion")
-                    #else
-                    let requestStartedExpect = DispatchSemaphore(value: 0)
-                    let requestCancelledExpect = DispatchSemaphore(value: 0)
-                    let requestCompletionExpect = DispatchSemaphore(value: 0)
-                    #endif
-                    
-                    
-                    
-                    let session = URLSession(configuration: URLSessionConfiguration.default)
-                    
-                    let request = WebRequest.DataRequest(testURL.appendingQueryItem("sleep=5"), usingSession: session) { r in
-                        defer { requestCompletionExpect.fulfill() }
-                        guard let e = r.error else {
-                            XCTFail("Missing error value")
-                            return
-                        }
-                        #if _runtime(_ObjC) || swift(>=4.2)
-                        XCTAssertEqual((e as NSError).code,
-                                       NSURLErrorCancelled,
-                                       "Invalid NS Error Code")
-                        #else
-                        if let nsError = e as? NSError {
-                            XCTAssertEqual(nsError.code,
-                                           NSURLErrorCancelled,
-                                           "Invalid NS Error Code")
-                        } else if let urlError = e as? URLError {
-                            XCTAssertEqual(urlError.code,
-                                           .cancelled,
-                                           "Invalid Error Code")
-                        } else {
-                            XCTFail("Unexpected error: \(e)")
-                        }
-                        #endif
-                        
-                    }
-                    request.requestStarted = { _ in
-                        requestStartedExpect.fulfill()
-                        request.cancel()
-                    }
-                    request.requestCancelled = { _ in
-                        requestCancelledExpect.fulfill()
-                    }
-                    var changedStates: [WebRequest.ChangeState] = []
-                    request.registerStateChangedHandler { request, from, to in
-                        changedStates.append(to)
-                    }
-                    //print("Starting request")
-                    request.resume()
-                    //print("Waiting for request to finish")
-                    request.waitUntilComplete()
-                    
-                    #if _runtime(_ObjC) || swift(>=5.0)
-                    self.wait(for: [requestStartedExpect,
-                                    requestCancelledExpect,
-                                    requestCompletionExpect],
-                                 timeout: 10)
-                    #else
-                    if requestStartedExpect.wait(timeout: .now() + 10) == .timedOut {
-                        XCTFail("Failed expectation request started")
-                    }
-                    if requestCancelledExpect.wait(timeout: .now() + 10) == .timedOut {
-                        XCTFail("Failed expectation request cancelled")
-                    }
-                    if requestCompletionExpect.wait(timeout: .now() + 10) == .timedOut {
-                        XCTFail("Failed expectation request completion")
-                    }
-                    #endif
-                    
-                    
-                    XCTAssertTrue(changedStates.contains(.starting))
-                    XCTAssertTrue(changedStates.contains(.canceling))
+                #if _runtime(_ObjC) || swift(>=4.2)
+                XCTAssertEqual((e as NSError).code,
+                               NSURLErrorCancelled,
+                               "Invalid NS Error Code")
+                #else
+                if let nsError = e as? NSError {
+                    XCTAssertEqual(nsError.code,
+                                   NSURLErrorCancelled,
+                                   "Invalid NS Error Code")
+                } else if let urlError = e as? URLError {
+                    XCTAssertEqual(urlError.code,
+                                   .cancelled,
+                                   "Invalid Error Code")
+                } else {
+                    XCTFail("Unexpected error: \(e)")
                 }
+                #endif
+                
+            }
+            request.requestStarted = { _ in
+                requestStartedExpect.fulfill()
+                request.cancel()
+            }
+            request.requestCancelled = { _ in
+                requestCancelledExpect.fulfill()
+            }
+            var changedStates: [WebRequest.ChangeState] = []
+            request.registerStateChangedHandler { request, from, to in
+                changedStates.append(to)
+            }
+            //print("Starting request")
+            request.resume()
+            //print("Waiting for request to finish")
+            request.waitUntilComplete()
+            
+            #if _runtime(_ObjC) || swift(>=5.0)
+            self.wait(for: [requestStartedExpect,
+                            requestCancelledExpect,
+                            requestCompletionExpect],
+                         timeout: 10)
+            #else
+            if requestStartedExpect.wait(timeout: .now() + 10) == .timedOut {
+                XCTFail("Failed expectation request started")
+            }
+            if requestCancelledExpect.wait(timeout: .now() + 10) == .timedOut {
+                XCTFail("Failed expectation request cancelled")
+            }
+            if requestCompletionExpect.wait(timeout: .now() + 10) == .timedOut {
+                XCTFail("Failed expectation request completion")
+            }
+            #endif
+            
+            
+            XCTAssertTrue(changedStates.contains(.starting))
+            XCTAssertTrue(changedStates.contains(.canceling))
+        }
     }
+    
+#if swift(>=5.5)
+    var testAsyncSingleRequestExecuted: Bool = false
+    func _testAsyncSingleRequest() async {
+        self.testAsyncSingleRequestExecuted = false
+        let testCount: Int = 5
+        let session = URLSession(configuration: URLSessionConfiguration.default)
+        defer {
+            session.finishTasksAndInvalidate()
+        }
+        
+        for _ in 0..<testCount {
+            
+            
+            // Test Basic Request
+            let testURL = self.testURLSearch.appendingQueryItem("q=Swift")
+            
+            let request = WebRequest.DataRequest(testURL, usingSession: session)
+            
+            
+            let r = await request.safeExecute()
+            self.testAsyncSingleRequestExecuted = true
+            XCTAssertNil(r.error, "Expected no Error but found '\(r.error as Any)'")
+            guard let s = r.responseString() else {
+                XCTFail("Unable to convert response into string: \(r.data as Any)")
+                return
+            }
+            XCTAssertEqual(s, "Query?q=Swift", "Expected response to match")
+            XCTAssertEqual(request.state, .completed)
+            
+            // Test Cancelled Request
+            
+            // set new request that will sleep for 3 seconds befor returning response
+            let requestCancelled = WebRequest.DataRequest(testURL.appendingQueryItem("sleep=3"), usingSession: session)
+            requestCancelled.requestStarted = { _ in
+                print("Request started")
+                DispatchQueue.global().async {
+                    Thread.sleep(forTimeInterval: 0.5)
+                    print("Cancelling request")
+                    requestCancelled.cancel()
+                }
+            }
+            requestCancelled.requestCompleted = { _ in
+                print("Request completed")
+            }
+            do {
+                let r = try await requestCancelled.execute()
+                XCTFail("Expected Error to be thrown:\n\(r)")
+            } catch let urlError as URLError {
+                XCTAssertEqual(urlError.errorCode, NSURLErrorCancelled)
+            } catch let nsError as NSError {
+                XCTAssertEqual(nsError.code, NSURLErrorCancelled)
+            } catch {
+                XCTFail("Unexpected error type \(error)")
+            }
+            
+            XCTAssertEqual(requestCancelled.state, .canceling)
+            
+            let inlineResults = await WebRequest.DataRequest(testURL, usingSession: session).safeExecute()
+            
+            
+            guard let s = inlineResults.responseString() else {
+                XCTFail("Unable to convert response into string: \(r.data as Any)")
+                return
+            }
+            XCTAssertEqual(s, "Query?q=Swift", "Expected response to match")
+            
+            
+            
+        }
+    }
+    #if _runtime(_ObjC)
+    func testAsyncSingleRequest() async {
+        self.testAsyncSingleRequestExecuted = false
+        await self._testAsyncSingleRequest()
+        XCTAssertTrue(self.testAsyncSingleRequestExecuted,
+                      "Test '_testAsyncSingleRequest' was not executed")
+    }
+    #else
+    func testAsyncSingleRequest() {
+        self.testAsyncSingleRequestExecuted = false
+        runAsyncTest {
+            await self._testAsyncSingleRequest()
+        }
+        XCTAssertTrue(self.testAsyncSingleRequestExecuted,
+                      "Test '_testAsyncSingleRequest' was not executed")
+    }
+    #endif
+#endif
     
     func testMultiRequest() {
         func sigHandler(_ signal: Int32) -> Void {
@@ -778,6 +903,72 @@ final class WebRequestTests: XCTestCase {
         sig.wait()
     }
     
+#if swift(>=5.5)
+    var testAsyncRepeatRequestExecuted: Bool = false
+    func _testAsyncRepeatRequest() async {
+        self.testAsyncRepeatRequestExecuted = false
+        
+        let session = URLSession(configuration: URLSessionConfiguration.default)
+        defer {
+            session.finishTasksAndInvalidate()
+        }
+        let req = testURLSearch
+        
+        func repeatHandler(_ request: WebRequest.RepeatedDataRequest<String>,
+                           _ results: WebRequest.DataRequest.Results,
+                           _ repeatCount: Int) -> WebRequest.RepeatedDataRequest<String>.RepeatResults {
+            if repeatCount < 5 {
+                return .repeat
+            } else {
+                return .results(results.responseString())
+            }
+        }
+        
+        var request: WebRequest.RepeatedDataRequest<String>!
+        request = WebRequest.RepeatedDataRequest<String>(req,
+                                                         usingSession: session,
+                                                         repeatInterval: 1,
+                                                         repeatHandler: repeatHandler) { rs, r, e in
+            
+            #if !DOCKER_ALL_BUILD
+            print("[\(self)][testAsyncRepeatRequest]: All Done!")
+            print("[\(self)][testAsyncRepeatRequest][Duration]: \(request.requestCompleteDuration ?? -1.0)")
+            #endif
+            
+             
+        }
+        
+        let r =  await request.safeExecute()
+        self.testAsyncRepeatRequestExecuted = true
+        // do verification here
+        guard let s = r.object else {
+            XCTFail("No response string")
+            return
+        }
+        #if !DOCKER_ALL_BUILD
+        print(s)
+        #endif
+        
+    }
+    #if _runtime(_ObjC)
+    func testAsyncRepeatRequest() async {
+        self.testAsyncRepeatRequestExecuted = false
+        await self._testAsyncRepeatRequest()
+        XCTAssertTrue(self.testAsyncRepeatRequestExecuted,
+                      "Test '_testAsyncRepeatRequest' was not executed")
+    }
+    #else
+    func testAsyncRepeatRequest() {
+        self.testAsyncRepeatRequestExecuted = false
+        runAsyncTest {
+            await self._testAsyncRepeatRequest()
+        }
+        XCTAssertTrue(self.testAsyncRepeatRequestExecuted,
+                      "Test '_testAsyncRepeatRequest' was not executed")
+    }
+    #endif
+#endif
+    
     func testDownloadFile() {
         
         
@@ -861,7 +1052,7 @@ final class WebRequestTests: XCTestCase {
     
     func testStreamedEvents() {
         
-        let eventsURL = testURLBase.appendingPathComponent("/events")
+        let eventsURL = testURLBase.appendingPathComponent("/events").appendingQueryItem("sleep=0.1")
         
         let session = URLSession(configuration: URLSessionConfiguration.default)
         
@@ -1738,17 +1929,35 @@ final class WebRequestTests: XCTestCase {
     }
     #endif
 
-    static var allTests = [
-        ("testSingleRequest", testSingleRequest),
-        ("testMultiRequest", testMultiRequest),
-        ("testMultiRequestEventOnCompleted", testMultiRequestEventOnCompleted),
-        ("testMultiRequestEventOnCompletedWithMaxConcurrentCount", testMultiRequestEventOnCompletedWithMaxConcurrentCount),
-        ("testRepeatRequest", testRepeatRequest),
-        ("testRepeatRequestCancelled", testRepeatRequestCancelled),
-        ("testRepeatRequestUpdateURL", testRepeatRequestUpdateURL),
-        ("testRepeatRequestUpdateURLCancelled", testRepeatRequestUpdateURLCancelled),
-        ("testDownloadFile", testDownloadFile),
-        ("testUploadFile", testUploadFile),
-        ("testStreamedEvents", testStreamedEvents)
-    ]
+    static var allTests: [(String, (WebRequestTests) -> () -> ())] = {
+        var rtn: [(String, (WebRequestTests) -> () -> ())] = []
+        rtn.append(("testSingleRequest", testSingleRequest))
+        
+        #if swift(>=5.5) && !_runtime(_ObjC)
+        rtn.append(("testAsyncSingleRequest", testAsyncSingleRequest))
+        #endif
+        
+        rtn.append(contentsOf: [
+            ("testMultiRequest", testMultiRequest),
+            ("testMultiRequestEventOnCompleted", testMultiRequestEventOnCompleted),
+            ("testMultiRequestEventOnCompletedWithMaxConcurrentCount", testMultiRequestEventOnCompletedWithMaxConcurrentCount),
+            ("testRepeatRequest", testRepeatRequest),
+            ("testRepeatRequestCancelled", testRepeatRequestCancelled),
+            ("testRepeatRequestUpdateURL", testRepeatRequestUpdateURL),
+            ("testRepeatRequestUpdateURLCancelled", testRepeatRequestUpdateURLCancelled),
+        ])
+        
+        #if swift(>=5.5) && !_runtime(_ObjC)
+        rtn.append(("testAsyncRepeatRequest", testAsyncRepeatRequest))
+        #endif
+        
+        rtn.append(contentsOf: [
+            
+            ("testDownloadFile", testDownloadFile),
+            ("testUploadFile", testUploadFile),
+            ("testStreamedEvents", testStreamedEvents)
+        ])
+        
+        return rtn
+    }()
 }
