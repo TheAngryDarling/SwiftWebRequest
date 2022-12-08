@@ -103,8 +103,8 @@ public extension WebRequest {
         @discardableResult
         public func addDidReceiveDataHandler(_ handler: @escaping (URLSession, DataBaseRequest, Data) -> Void) -> String {
             return self.dataEventDelegate.addDidReceiveDataHandler { [weak self] session, _, data in
-                guard self != nil else { return }
-                handler(session, self!, data)
+                guard let currentSelf = self else { return }
+                handler(session, currentSelf, data)
             }
         }
         /// Remove event handler with the given Id

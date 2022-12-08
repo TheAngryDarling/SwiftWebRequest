@@ -308,16 +308,16 @@ public extension WebRequest {
         public func addDidFinishDownloadingToHandler(withId uid: String,
                                                      _ handler: @escaping (URLSession, DownloadRequest, URL) -> Void) -> String {
             return self.downloadEventDelegate.addDidFinishDownloadingToHandler(withId: uid) { [weak self] session, _, url in
-                guard self != nil else { return }
-                handler(session, self!, url)
+                guard let currentSelf = self else { return }
+                handler(session, currentSelf, url)
             }
         }
         /// Add event handler
         @discardableResult
         public func addDidFinishDownloadingToHandler(_ handler: @escaping (URLSession, DownloadRequest, URL) -> Void) -> String {
             return self.downloadEventDelegate.addDidFinishDownloadingToHandler { [weak self] session, _, url in
-                guard self != nil else { return }
-                handler(session, self!, url)
+                guard let currentSelf = self else { return }
+                handler(session, currentSelf, url)
             }
         }
         /// Remove event handler with the given Id
@@ -330,8 +330,8 @@ public extension WebRequest {
         public func addDidResumeAtOffsetHandler(withId uid: String,
                                                 _ handler: @escaping (URLSession, DownloadRequest, Int64, Int64) -> Void) -> String {
             return self.downloadEventDelegate.addDidResumeAtOffsetHandler(withId: uid) { [weak self] session, _, a, b in
-                guard self != nil else { return }
-                handler(session, self!, a, b)
+                guard let currentSelf = self else { return }
+                handler(session, currentSelf, a, b)
             }
         }
         
@@ -339,8 +339,8 @@ public extension WebRequest {
         @discardableResult
         public func addDidResumeAtOffsetHandler(_ handler: @escaping (URLSession, DownloadRequest, Int64, Int64) -> Void) -> String {
             return self.downloadEventDelegate.addDidResumeAtOffsetHandler { [weak self] session, _, a, b in
-                guard self != nil else { return }
-                handler(session, self!, a, b)
+                guard let currentSelf = self else { return }
+                handler(session, currentSelf, a, b)
             }
         }
         /// Remove event handler with the given Id
@@ -353,16 +353,16 @@ public extension WebRequest {
         public func addDidWriteDataHandler(withId uid: String,
                                            _ handler: @escaping (URLSession, DownloadRequest, Int64, Int64, Int64) -> Void) -> String {
             return self.downloadEventDelegate.addDidWriteDataHandler(withId: uid) { [weak self] session, _, a, b, c in
-                guard self != nil else { return }
-                handler(session, self!, a, b, c)
+                guard let currentSelf = self else { return }
+                handler(session, currentSelf, a, b, c)
             }
         }
         /// Add event handler
         @discardableResult
         public func addDidWriteDataHandler(_ handler: @escaping (URLSession, DownloadRequest, Int64, Int64, Int64) -> Void) -> String {
             return self.downloadEventDelegate.addDidWriteDataHandler { [weak self] session, _, a, b, c in
-                guard self != nil else { return }
-                handler(session, self!, a, b, c)
+                guard let currentSelf = self else { return }
+                handler(session, currentSelf, a, b, c)
             }
         }
         

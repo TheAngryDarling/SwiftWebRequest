@@ -387,16 +387,17 @@ public extension WebRequest {
             self.eventDelegate = eventDelegate
             super.init(name: name)
             self.eventDelegate.addCompletionHandler(withId: "self") { [weak self] results, response, error in
-                guard self != nil else { return }
-                let results = TaskedWebRequestResults<CompletionResults>(request: self!.originalRequest!,
+                guard let currentSelf = self else { return }
+                let results = TaskedWebRequestResults<CompletionResults>(request: currentSelf.originalRequest!,
                                                                    response: response,
                                                                    error: error,
                                                                    results: results)
                 
-                self!._results = results
-                self!.triggerStateChange(from: self!._previousState, to: self!.state)
+                currentSelf._results = results
+                currentSelf.triggerStateChange(from: currentSelf._previousState,
+                                               to: currentSelf.state)
                 if let ch = completionHandler {
-                    self!.callSyncEventHandler { ch(results) }
+                    currentSelf.callSyncEventHandler { ch(results) }
                 }
             }
             
@@ -418,8 +419,8 @@ public extension WebRequest {
                                                                     Int64,
                                                                     Int64) -> Void) -> String {
             return self.eventDelegate.addDidSendBodyDataHandler(withId: uid) { [weak self] session, _, a, b, c in
-                guard self != nil else { return }
-                handler(session, self!, a, b, c)
+                guard let currentSelf = self else { return }
+                handler(session, currentSelf, a, b, c)
             }
         }
         /// Add event handler
@@ -430,8 +431,8 @@ public extension WebRequest {
                                                                     Int64,
                                                                     Int64) -> Void) -> String {
             return self.eventDelegate.addDidSendBodyDataHandler { [weak self] session, _, a, b, c in
-                guard self != nil else { return }
-                handler(session, self!, a, b, c)
+                guard let currentSelf = self else { return }
+                handler(session, currentSelf, a, b, c)
             }
         }
         /// Remove event handler with the given Id
@@ -446,8 +447,8 @@ public extension WebRequest {
                                                                          TaskedWebRequest<CompletionResults>,
                                                                          Error?) -> Void) -> String {
             return self.eventDelegate.addDidCompleteWithErrorHandler(withId: uid) { [weak self] session, _, error in
-                guard self != nil else { return }
-                handler(session, self!, error)
+                guard let currentSelf = self else { return }
+                handler(session, currentSelf, error)
             }
         }
         
@@ -457,8 +458,8 @@ public extension WebRequest {
                                                                          TaskedWebRequest<CompletionResults>,
                                                                          Error?) -> Void) -> String {
             return self.eventDelegate.addDidCompleteWithErrorHandler { [weak self] session, _, error in
-                guard self != nil else { return }
-                handler(session, self!, error)
+                guard let currentSelf = self else { return }
+                handler(session, currentSelf, error)
             }
         }
         /// Remove event handler with the given Id
