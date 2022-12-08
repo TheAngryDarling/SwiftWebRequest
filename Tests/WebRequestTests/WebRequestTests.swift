@@ -3,7 +3,7 @@ import Dispatch
 import LittleWebServer
 @testable import WebRequest
 #if swift(>=4.1)
-    #if canImport(FoundationXML)
+    #if canImport(FoundationNetworking)
         import FoundationNetworking
     #endif
 #endif
