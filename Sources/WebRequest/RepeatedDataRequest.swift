@@ -231,7 +231,10 @@ public extension WebRequest {
         private let session: URLSession
         private let delegate: DataBaseRequest.URLSessionDataTaskEventHandler
         
-        private let completionHandler: HandlerResourceLock<(DataRequest.Results, T?, Swift.Error?) -> Void>
+        private let completionHandlers: HandlerResourceLock<[String:(_ request: RepeatedDataRequest,
+                                                                     _ results: DataRequest.Results,
+                                                                     _ object: T?,
+                                                                     _ error: Swift.Error?) -> Void]>
         
         /// Repeat handler is the event handler that gets called to indicate if the class should repeat or not.
         /// It allwos for results to be passed from here to the completion handler so they do not need to be parsed twice.
@@ -256,7 +259,8 @@ public extension WebRequest {
             self.delegate = delegate
             self.session = URLSession(copy: session(), delegate: delegate)
             self.repeatHandler = repeatHandler
-            self.completionHandler = .init(completionHandler)
+            self.completionHandlers = .init([:])
+            
             
             self.originalRequest = requestGenerator.generate(previousRequest: nil, repeatCount: 0)
             self.currentRequest = self.originalRequest
@@ -268,6 +272,12 @@ public extension WebRequest {
             self.results = .init(request: self.originalRequest)
             
             super.init(name: name)
+            
+            if let ch = completionHandler {
+                self.registerCompletionHandler { request, results, object, error in
+                    ch(results, object, error)
+                }
+            }
         }
         
         /// Create a new WebRequest using the provided request and session.
@@ -359,8 +369,50 @@ public extension WebRequest {
             
             // removing any reference to any exture closures
             self.repeatHandler = nil
-            self.completionHandler.withUpdatingLock { r in
+            self.completionHandlers.withUpdatingLock { r in
                 r.handler = nil
+            }
+        }
+        
+        /// Register a requset completion handler
+        /// - Parameters:
+        ///   - handlerID: The unique ID to use when registering the handler.  This ID can be used to remove the handler later.  If the ID was not unique a precondition error will occure
+        ///   - handler: The completion handler to be called
+        public func registerCompletionHandler(handlerID: String,
+                                              handler: @escaping (_ request: RepeatedDataRequest,
+                                                                  _ results: DataRequest.Results,
+                                                                  _ object: T?,
+                                                                  _ error: Swift.Error?) -> Void) {
+            
+            self.completionHandlers.withUpdatingLock { r in
+                if r.handler == nil { r.handler = [:] }
+                guard !(r.handler!.keys.contains(handlerID)) else {
+                    preconditionFailure("Handler ID Already exists")
+                }
+                r.handler![handlerID] = handler
+            }
+        }
+        
+        /// Register a requset completion handler
+        /// - Parameter handler: The completion handler to be called
+        /// - Returns: Returns the unique ID for the handler tha  can be used to remove the handle later
+        @discardableResult
+        public func registerCompletionHandler(handler: @escaping (_ request: RepeatedDataRequest,
+                                                                  _ results: DataRequest.Results,
+                                                                  _ object: T?,
+                                                                  _ error: Swift.Error?) -> Void) -> String {
+            let uid = UUID().uuidString
+            self.registerCompletionHandler(handlerID: uid, handler: handler)
+            return uid
+        }
+        
+        /// Removes a handler
+        /// - Parameter id: The unique ID of the handler to remove
+        /// - Returns: Returns an indicator if a handler was removed
+        @discardableResult
+        public func unregisterCompletionHandler(for id: String) -> Bool {
+            return self.completionHandlers.withUpdatingLock { r in
+                return r.handler?.removeValue(forKey: id) != nil
             }
         }
         
@@ -458,12 +510,14 @@ public extension WebRequest {
                     currentSelf.triggerStateChange(from: currentState, to: finishState)
                     
                     
-                    currentSelf.completionHandler.withUpdatingLock { r in
+                    currentSelf.completionHandlers.withUpdatingLock { r in
                         r.hasCalled = true
-                        if let h = r.handler {
-                             currentSelf.callSyncEventHandler {
-                                 h(requestResults, results, err)
-                             }
+                        if let handlers = r.handler?.values {
+                            for h in handlers {
+                                 currentSelf.callSyncEventHandler {
+                                     h(currentSelf, requestResults, results, err)
+                                 }
+                            }
                         }
                     }
                     
@@ -526,14 +580,16 @@ public extension WebRequest {
             
             self.triggerStateChange(from: currentState, to: .canceling)
             
-            self.completionHandler.withUpdatingLock { r in
+            self.completionHandlers.withUpdatingLock { r in
                 guard !r.hasCalled else { return }
                 r.hasCalled = true
                 
-                if let f = r.handler {
-                    /// was async
-                    self.callSyncEventHandler {
-                        f(cancelledResults, nil, cancelledResults.error)
+                if let handlers = r.handler?.values {
+                    for f in handlers {
+                        /// was async
+                        self.callSyncEventHandler {
+                            f(self, cancelledResults, nil, cancelledResults.error)
+                        }
                     }
                 }
             }
@@ -556,7 +612,7 @@ public extension WebRequest {
         
         private func webRequestEventMonitor(notification: Notification) -> Void {
             
-            guard !self.completionHandler.value.hasCalled else { return }
+            guard !self.completionHandlers.value.hasCalled else { return }
             
             guard let request = notification.object as? WebRequest else { return }
             

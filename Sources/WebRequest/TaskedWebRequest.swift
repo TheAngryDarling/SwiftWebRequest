@@ -367,6 +367,9 @@ public extension WebRequest {
         public override var progress: Progress { return self.task.progress }
         #endif
         
+        private let requestCompletionHandlers: ResourceLock<[String: (TaskedWebRequest,
+                                                                  Results) -> Void]> = .init(resource: [:])
+        
         /// Create a new WebRequest using the provided url and session.
         ///
         /// - Parameters:
@@ -399,6 +402,18 @@ public extension WebRequest {
                 if let ch = completionHandler {
                     currentSelf.callSyncEventHandler { ch(results) }
                 }
+                
+                // Lets get a copy of all state change handlers
+                let completionHandlers = currentSelf.requestCompletionHandlers.withUpdatingLock { handlers in
+                    return handlers.values
+                }
+                // Lets trigger the registered state handlers
+                for handler in completionHandlers {
+                    currentSelf.callAsyncEventHandler {
+                    //self.callSyncEventHandler {
+                        handler(currentSelf, results)
+                    }
+                }
             }
             
         }
@@ -406,8 +421,48 @@ public extension WebRequest {
         deinit {
             self._results?.clearResults()
             self._results = nil
+            self.requestCompletionHandlers.withUpdatingLock { dict in
+                dict = [:]
+            }
             self.eventDelegate.removeAllHandlers()
             self.session?.finishTasksAndInvalidate()
+        }
+        
+        /// Register a requset completion handler
+        /// - Parameters:
+        ///   - handlerID: The unique ID to use when registering the handler.  This ID can be used to remove the handler later.  If the ID was not unique a precondition error will occure
+        ///   - handler: The completion handler to be called
+        public func registerCompletionHandler(handlerID: String,
+                                              handler: @escaping (_ request: TaskedWebRequest,
+                                                                  _ results: Results) -> Void) {
+            
+            self.requestCompletionHandlers.withUpdatingLock { dict in
+                guard !dict.keys.contains(handlerID) else {
+                    preconditionFailure("Handler ID Already exists")
+                }
+                dict[handlerID] = handler
+            }
+        }
+        
+        /// Register a requset completion handler
+        /// - Parameter handler: The completion handler to be called
+        /// - Returns: Returns the unique ID for the handler tha  can be used to remove the handle later
+        @discardableResult
+        public func registerCompletionHandler(handler: @escaping (_ request: TaskedWebRequest,
+                                                                  _ results: Results) -> Void) -> String {
+            let uid = UUID().uuidString
+            self.registerCompletionHandler(handlerID: uid, handler: handler)
+            return uid
+        }
+        
+        /// Removes a handler
+        /// - Parameter id: The unique ID of the handler to remove
+        /// - Returns: Returns an indicator if a handler was removed
+        @discardableResult
+        public func unregisterCompletionHandler(for id: String) -> Bool {
+            return self.requestCompletionHandlers.withUpdatingLock { dict in
+                return dict.removeValue(forKey: id) != nil
+            }
         }
         
         /// Add event handler
