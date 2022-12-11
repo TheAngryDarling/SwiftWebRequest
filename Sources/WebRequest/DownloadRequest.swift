@@ -42,15 +42,27 @@ public extension WebRequest {
             func urlSession(_ session: URLSession,
                             task: URLSessionTask,
                             didFinishDownloadingTo location: URL) {
-                self.taskResults[task.taskIdentifier] = location
+                // Only accept events for the given request
+                guard self.isWorkingTask(task) else { return }
+                
+                self.results = location
                 for (_, handler) in self.didFinishDownloadingToHandler {
-                    handler(session, task, location)
+                    if let q = self.eventHandlerQueue {
+                        q.sync {
+                            handler(session, task, location)
+                        }
+                    } else {
+                        handler(session, task, location)
+                    }
                 }
             }
             
             func urlSession(_ session: URLSession,
                             downloadTask: URLSessionDownloadTask,
                             didFinishDownloadingTo location: URL) {
+                // Only accept events for the given request
+                guard self.isWorkingTask(downloadTask) else { return }
+                
                 self.urlSession(session,
                                 task: downloadTask,
                                 didFinishDownloadingTo: location)
@@ -82,8 +94,17 @@ public extension WebRequest {
                             downloadTask: URLSessionDownloadTask,
                             didResumeAtOffset fileOffset: Int64,
                             expectedTotalBytes: Int64) {
+                // Only accept events for the given request
+                guard self.isWorkingTask(downloadTask) else { return }
+                
                 for (_, handler) in self.didResumeAtOffsetHandler {
-                    handler(session, downloadTask, fileOffset, expectedTotalBytes)
+                    if let q = self.eventHandlerQueue {
+                        q.sync {
+                            handler(session, downloadTask, fileOffset, expectedTotalBytes)
+                        }
+                    } else {
+                        handler(session, downloadTask, fileOffset, expectedTotalBytes)
+                    }
                 }
             }
             
@@ -114,12 +135,25 @@ public extension WebRequest {
                             totalBytesWritten: Int64,
                             totalBytesExpectedToWrite: Int64) {
                 
+                // Only accept events for the given request
+                guard self.isWorkingTask(task) else { return }
+                
                 for (_, handler) in self.didWriteDataHandler {
-                    handler(session,
-                            task,
-                            bytesWritten,
-                            totalBytesWritten,
-                            totalBytesExpectedToWrite)
+                    if let q = self.eventHandlerQueue {
+                        q.async {
+                            handler(session,
+                                    task,
+                                    bytesWritten,
+                                    totalBytesWritten,
+                                    totalBytesExpectedToWrite)
+                        }
+                    } else {
+                        handler(session,
+                                task,
+                                bytesWritten,
+                                totalBytesWritten,
+                                totalBytesExpectedToWrite)
+                    }
                 }
             }
             
@@ -129,6 +163,10 @@ public extension WebRequest {
                             didWriteData bytesWritten: Int64,
                             totalBytesWritten: Int64,
                             totalBytesExpectedToWrite: Int64) {
+                
+                // Only accept events for the given request
+                guard self.isWorkingTask(downloadTask) else { return }
+                
                 urlSession(session,
                            task: downloadTask,
                            didWriteData: bytesWritten,
@@ -176,6 +214,9 @@ public extension WebRequest {
                                      task: URLSessionTask,
                                      didCompleteWithError error: Error?) {
                 
+                // Only accept events for the given request
+                guard self.isWorkingTask(task) else { return }
+                
                 if error == nil &&
                     FileManager.default.fileExists(atPath: self.uniqueTempFileURL.path) {
                     super.urlSession(session,
@@ -195,6 +236,9 @@ public extension WebRequest {
             func urlSession(_ session: URLSession,
                             dataTask: URLSessionDataTask,
                             didReceive data: Data) {
+                
+                // Only accept events for the given request
+                guard self.isWorkingTask(dataTask) else { return }
                 
                 if FileManager.default.fileExists(atPath: self.uniqueTempFileURL.path) {
                     do {

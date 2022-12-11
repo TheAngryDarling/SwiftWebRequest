@@ -19,6 +19,10 @@ public extension WebRequest {
         internal class URLSessionDataTaskEventHandler: URLSessionTaskEventHandlerWithCompletionHandler<Data>,
                                                        URLSessionDataDelegate {
             
+            /// Flag use to indicate of the results should be saved if not automatically.
+            /// This flag must be set to true before starting request to ensure collecting of
+            /// the results
+            public var forceSaveResults: Bool = false
             
             public private(set) var didReceiveDataHandler: [String: (URLSession, URLSessionDataTask, Data) -> Void] = [:]
             
@@ -48,17 +52,33 @@ public extension WebRequest {
                             dataTask: URLSessionDataTask,
                             didReceive data: Data) {
                 
-                if self.completionHandler.count > 0 || !self.hasEventHandlers {
-                    if var workingData = self.taskResults[dataTask.taskIdentifier] {
+                // Only accept events for the given request
+                guard self.isWorkingTask(dataTask) else { return }
+                
+                if self.completionHandler.count > 0 ||
+                    !self.hasEventHandlers ||
+                    self.forceSaveResults {
+                    
+                    if var workingData = self.results {
                         workingData.append(data)
-                        self.taskResults[dataTask.taskIdentifier] = workingData
+                        self.results = workingData
                     } else {
-                        self.taskResults[dataTask.taskIdentifier] = data
+                        self.results = data
                     }
                 }
                 
                 for (_, handler) in self.didReceiveDataHandler {
-                    handler(session, dataTask, data)
+                    if let q = self.eventHandlerQueue {
+                        q.sync {
+                            WebRequest.autoreleasepool {
+                                handler(session, dataTask, data)
+                            }
+                        }
+                    } else {
+                        WebRequest.autoreleasepool {
+                            handler(session, dataTask, data)
+                        }
+                    }
                 }
             }
             
@@ -74,6 +94,13 @@ public extension WebRequest {
             return self.eventDelegate as! URLSessionDataTaskEventHandler
         }
         
+        /// Flag use to indicate of the results should be saved if not automatically.
+        /// This flag must be set to true before starting request to ensure collecting of
+        /// the results
+        public var forceSaveResults: Bool {
+            get { return self.dataEventDelegate.forceSaveResults }
+            set { self.dataEventDelegate.forceSaveResults = newValue }
+        }
         
         
         /// Create a new WebRequest using the provided url and session.

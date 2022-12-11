@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import Dispatch
 #if swift(>=4.1)
     #if canImport(FoundationNetworking)
         import FoundationNetworking
@@ -35,9 +36,20 @@ public extension WebRequest {
         
         
         public internal(set) var hasEventHandlers: Bool = false
+        internal var taskId: Int?
+        internal var eventHandlerQueue: DispatchQueue? = nil
         
         deinit {
             self.removeAllHandlers()
+        }
+        
+        /// Method used to check to see if the current Session Task Event Handler
+        /// is assigned to the given task provided.
+        /// This ensures that when capturing an event that it doesn't get
+        /// broadcasted if its from a different session task
+        func isWorkingTask(_ task: URLSessionTask) -> Bool {
+            guard let tid = self.taskId else { return false }
+            return tid == task.taskIdentifier
         }
         
         public private(set) var didSendBodyDataHandler: [String: (URLSession, URLSessionTask, Int64, Int64, Int64) -> Void] = [:]
@@ -74,12 +86,25 @@ public extension WebRequest {
                         didSendBodyData bytesSent: Int64,
                         totalBytesSent: Int64,
                         totalBytesExpectedToSend: Int64) {
+            // Only accept events for the given request
+            guard self.isWorkingTask(task) else { return }
+            
             for (_, handler) in self.didSendBodyDataHandler {
-                handler(session,
-                        task,
-                        bytesSent,
-                        totalBytesSent,
-                        totalBytesExpectedToSend)
+                if let q = self.eventHandlerQueue {
+                    q.sync {
+                        handler(session,
+                                task,
+                                bytesSent,
+                                totalBytesSent,
+                                totalBytesExpectedToSend)
+                    }
+                } else {
+                    handler(session,
+                            task,
+                            bytesSent,
+                            totalBytesSent,
+                            totalBytesExpectedToSend)
+                }
             }
         }
 
@@ -110,8 +135,17 @@ public extension WebRequest {
         func urlSession(_ session: URLSession,
                         task: URLSessionTask,
                         didCompleteWithError error: Error?) {
+            // Only accept events for the given request
+            guard self.isWorkingTask(task) else { return }
+            
             for (_, handler) in self.didCompleteWithErrorHandler {
-                handler(session, task, error)
+                if let q = self.eventHandlerQueue {
+                    q.sync {
+                        handler(session, task, error)
+                    }
+                } else {
+                    handler(session, task, error)
+                }
             }
         }
         
@@ -140,8 +174,15 @@ public extension WebRequest {
         }
         func urlSession(_ session: URLSession,
                         didBecomeInvalidWithError error: Error?) {
+            
             for (_, handler) in self.didBecomeInvalidWithErrorHandler {
-                handler(session, error)
+                if let q = self.eventHandlerQueue {
+                    q.sync {
+                        handler(session, error)
+                    }
+                } else {
+                    handler(session, error)
+                }
             }
         }
         
@@ -168,7 +209,13 @@ public extension WebRequest {
         
         func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
             for (_, handler) in self.sessionDidFinishEventsForBackgroundHandler {
-                handler(session)
+                if let q = self.eventHandlerQueue {
+                    q.sync {
+                        handler(session)
+                    }
+                } else {
+                    handler(session)
+                }
             }
         }
         
@@ -189,27 +236,44 @@ public extension WebRequest {
     
     
     internal class URLSessionTaskEventHandlerWithCompletionHandler<CompletionResults>: URLSessionTaskEventHandler where CompletionResults: TaskedWebRequestCompletionHandlerResults {
-        internal var taskResults: [Int: CompletionResults] = [:]
-        //public var results: CompletionResults?
+        
+        internal var results: CompletionResults?
         
         deinit {
-            for k in self.taskResults.keys {
-                self.taskResults[k]!.emptyLocallyLoadedData()
-            }
-            self.taskResults.removeAll(keepingCapacity: false)
+            self.results?.emptyLocallyLoadedData()
+            self.results = nil
         }
         override func urlSession(_ session: URLSession,
                                  task: URLSessionTask,
                                  didCompleteWithError error: Error?) {
             
-            for (_, handler) in self.completionHandler {
-                WebRequest.autoreleasepool {
-                    handler(self.taskResults[task.taskIdentifier], task.response, error)
-                }
-            }
+            // Only accept events for the given request
+            guard self.isWorkingTask(task) else { return }
+            
             super.urlSession(session, task: task, didCompleteWithError: error)
-            self.taskResults[task.taskIdentifier]?.emptyLocallyLoadedData()
-            self.taskResults.removeValue(forKey: task.taskIdentifier)
+            
+            
+            for (_, handler) in self.completionHandler {
+                if let q = self.eventHandlerQueue {
+                    q.sync {
+                        WebRequest.autoreleasepool {
+                            //handler(self.taskResults[task.taskIdentifier],
+                            handler(self.results,
+                                    task.response,
+                                    error)
+                        }
+                    }
+                } else {
+                    WebRequest.autoreleasepool {
+                        handler(self.results,
+                                task.response,
+                                error)
+                    }
+                }
+                
+            }
+            self.results?.emptyLocallyLoadedData()
+            self.results = nil
         }
         
         
@@ -389,6 +453,7 @@ public extension WebRequest {
             self.session = session
             self.eventDelegate = eventDelegate
             super.init(name: name)
+            self.eventDelegate.taskId = task.taskIdentifier
             self.eventDelegate.addCompletionHandler(withId: "self") { [weak self] results, response, error in
                 guard let currentSelf = self else { return }
                 let results = TaskedWebRequestResults<CompletionResults>(request: currentSelf.originalRequest!,
