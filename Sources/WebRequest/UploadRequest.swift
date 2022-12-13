@@ -35,14 +35,28 @@ public extension WebRequest {
                 req._httpMethod = .post
             }
             
+            let currentSession = session()
             let eventDelegate = URLSessionDataTaskEventHandler()
+            var workingSession: URLSession
+            var invalidateSession: Bool
+            let proxyDelegateId: String?
+            
+            if let proxyDelegate = currentSession.delegate as? WebRequestSharedSessionDelegate {
+                proxyDelegateId = proxyDelegate.pushChildDelegate(delegate: eventDelegate)
+                workingSession = currentSession
+                invalidateSession = false
+            } else {
+                proxyDelegateId = nil
+                workingSession = URLSession(copy: currentSession,
+                                            delegate: eventDelegate)
+                invalidateSession = true
+            }
             
             
-            let session = URLSession(copy: session(),
-                                     delegate: eventDelegate)
-            super.init(session.uploadTask(with: req, from: bodyData),
-                       name: name,
-                       session: session,
+            super.init(workingSession.dataTask(with: req),
+                       session: workingSession,
+                       invalidateSession: invalidateSession,
+                       proxyDelegateId: proxyDelegateId,
                        eventDelegate: eventDelegate,
                        completionHandler: completionHandler)
         }
@@ -87,14 +101,28 @@ public extension WebRequest {
                 req._httpMethod = .post
             }
             
+            let currentSession = session()
             let eventDelegate = URLSessionDataTaskEventHandler()
+            var workingSession: URLSession
+            var invalidateSession: Bool
+            let proxyDelegateId: String?
             
+            if let proxyDelegate = currentSession.delegate as? WebRequestSharedSessionDelegate {
+                proxyDelegateId = proxyDelegate.pushChildDelegate(delegate: eventDelegate)
+                workingSession = currentSession
+                invalidateSession = false
+            } else {
+                proxyDelegateId = nil
+                workingSession = URLSession(copy: currentSession,
+                                            delegate: eventDelegate)
+                invalidateSession = true
+            }
             
-            let session = URLSession(copy: session(),
-                                     delegate: eventDelegate)
-            super.init(session.uploadTask(with: req, fromFile: fileURL),
+            super.init(workingSession.uploadTask(with: req, fromFile: fileURL),
                        name: name,
-                       session: session,
+                       session: workingSession,
+                       invalidateSession: invalidateSession,
+                       proxyDelegateId: proxyDelegateId,
                        eventDelegate: eventDelegate,
                        completionHandler: completionHandler)
         }
@@ -130,14 +158,29 @@ public extension WebRequest {
                     name: String? = nil,
                     usingSession session: @autoclosure () -> URLSession) {
             
+            let currentSession = session()
             let eventDelegate = URLSessionDataTaskEventHandler()
+            var workingSession: URLSession
+            var invalidateSession: Bool
+            let proxyDelegateId: String?
+            
+            if let proxyDelegate = currentSession.delegate as? WebRequestSharedSessionDelegate {
+                proxyDelegateId = proxyDelegate.pushChildDelegate(delegate: eventDelegate)
+                workingSession = currentSession
+                invalidateSession = false
+            } else {
+                proxyDelegateId = nil
+                workingSession = URLSession(copy: currentSession,
+                                            delegate: eventDelegate)
+                invalidateSession = true
+            }
             
             
-            let session = URLSession(copy: session(),
-                                     delegate: eventDelegate)
-            super.init(session.uploadTask(withStreamedRequest: request),
+            super.init(workingSession.uploadTask(withStreamedRequest: request),
                        name: name,
-                       session: session,
+                       session: workingSession,
+                       invalidateSession: invalidateSession,
+                       proxyDelegateId: proxyDelegateId,
                        eventDelegate: eventDelegate)
         }
     }

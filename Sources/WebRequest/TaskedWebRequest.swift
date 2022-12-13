@@ -361,7 +361,12 @@ public extension WebRequest {
         public typealias Results = TaskedWebRequestResults<CompletionResults>
         
         private var task: URLSessionTask! = nil
-        private weak var session: URLSession?
+        /// The session used to create this task
+        internal weak var session: URLSession?
+        /// Indicator if the session should be invalidated when done
+        internal let invalidateSession: Bool
+        /// The unique id of the proxy delegate
+        internal let proxyDelegateId: String?
         
         /// Results from the request
         internal var _results: Results? = nil
@@ -439,23 +444,44 @@ public extension WebRequest {
         /// - Parameters:
         ///   - task: The task executing the request
         ///   - name: Custom Name identifing this request
-        ///   - session: The session used to create the task that should be invalidated
+        ///   - session: The session the task was created from
+        ///   - invalidateSession: Indicator if the session should be invalidated when deinited
+        ///   - proxyDelegateId: The id of the delegate storede wihtin the proxy delegate
         ///   - eventDelegate: The delegate used to monitor the task events
-        ///   - originalRequest: The original request of the task
         ///   - completionHandler: The call back when done executing
         internal init(_ task: URLSessionTask,
                       name: String? = nil,
-                      session: URLSession?,
+                      session: URLSession,
+                      invalidateSession: Bool,
+                      proxyDelegateId: String?,
                       eventDelegate: URLSessionTaskEventHandlerWithCompletionHandler<CompletionResults>,
                       completionHandler: ((Results) -> Void)? = nil) {
-            //print("Creating Tasked Request")
             self.task = task
-            self.session = session
             self.eventDelegate = eventDelegate
+            self.session = session
+            self.invalidateSession = invalidateSession
+            self.proxyDelegateId = proxyDelegateId
             super.init(name: name)
             self.eventDelegate.taskId = task.taskIdentifier
             self.eventDelegate.addCompletionHandler(withId: "self") { [weak self] results, response, error in
                 guard let currentSelf = self else { return }
+                defer {
+                    // we will unregister the completion with error
+                    // event handler
+                    currentSelf.eventDelegate.removeDidCompleteWithErrorHandler(withId: "task[\(task.taskIdentifier)]")
+                    // the task has completed so lets unregister
+                    // the delegate if we can
+                    currentSelf.removeChildURLSessionDelegate()
+                    
+                    if currentSelf.invalidateSession {
+                        // if we are suposed to invalidate the session
+                        // now is a good time to do so instead of
+                        // waiting for the deinit
+                        currentSelf.session?.finishTasksAndInvalidate()
+                        // remove reference to the session
+                        currentSelf.session = nil
+                    }
+                }
                 let results = TaskedWebRequestResults<CompletionResults>(request: currentSelf.originalRequest!,
                                                                    response: response,
                                                                    error: error,
@@ -484,13 +510,29 @@ public extension WebRequest {
         }
         
         deinit {
+            self.removeChildURLSessionDelegate()
+            if self.invalidateSession {
+                // if we are suposed to invalidate the session
+                // now is a good time to do so instead of
+                // waiting for the deinit
+                self.session?.finishTasksAndInvalidate()
+                // remove reference to the session
+                self.session = nil
+            }
+            self.session = nil
             self._results?.clearResults()
             self._results = nil
             self.requestCompletionHandlers.withUpdatingLock { dict in
                 dict = [:]
             }
             self.eventDelegate.removeAllHandlers()
-            self.session?.finishTasksAndInvalidate()
+        }
+        
+        private func removeChildURLSessionDelegate() {
+            if let pid = self.proxyDelegateId,
+               let proxyDelegate = self.session?.delegate as? WebRequestSharedSessionDelegate {
+                proxyDelegate.removeChildDelegate(withId: pid)
+            }
         }
         
         /// Register a requset completion handler

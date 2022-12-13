@@ -229,7 +229,9 @@ public extension WebRequest {
         
         private let requestGenerator: RequestGenerator
         private let session: URLSession
+        private let invalidateSession: Bool
         private let delegate: DataBaseRequest.URLSessionDataTaskEventHandler
+        private let proxyDelegateId: String?
         
         private let completionHandlers: HandlerResourceLock<[String:(_ request: RepeatedDataRequest,
                                                                      _ results: DataRequest.Results,
@@ -251,13 +253,26 @@ public extension WebRequest {
                     name: String? = nil,
                     usingSession session: @escaping @autoclosure () -> URLSession,
                     repeatInterval: TimeInterval = RepeatedDataRequestConstants.DEFAULT_REPEAT_INTERVAL,
+                    duplicateSession: Bool = true,
                     repeatHandler: @escaping (RepeatedDataRequest<T>, DataRequest.Results, Int) throws -> RepeatResults,
                     completionHandler: ((DataRequest.Results, T?, Swift.Error?) -> Void)? = nil) {
             self.repeatInterval = repeatInterval
             self.requestGenerator = requestGenerator
             let delegate = DataBaseRequest.URLSessionDataTaskEventHandler()
+            
+            var workingSession = session()
+            var invalidateSession: Bool = false
+            if duplicateSession || !(workingSession.delegate is WebRequestSharedSessionDelegate) {
+                invalidateSession = true
+                workingSession = URLSession(copy: workingSession,
+                                            delegate: WebRequestSharedSessionDelegate())
+            }
+            
+            self.proxyDelegateId = (workingSession.delegate as! WebRequestSharedSessionDelegate).appendChildDelegate(delegate: delegate)
+            
             self.delegate = delegate
-            self.session = URLSession(copy: session(), delegate: delegate)
+            self.session = workingSession
+            self.invalidateSession = invalidateSession
             self.repeatHandler = repeatHandler
             self.completionHandlers = .init([:])
             
@@ -372,6 +387,15 @@ public extension WebRequest {
             self.completionHandlers.withUpdatingLock { r in
                 r.handler = nil
             }
+            
+            // Remove local delegate from session proxy delegate
+            if let duid = self.proxyDelegateId,
+               let proxyDelegate = self.session.delegate as? WebRequestSharedSessionDelegate {
+                proxyDelegate.removeChildDelegate(withId: duid)
+            }
+            if self.invalidateSession {
+                self.session.finishTasksAndInvalidate()
+            }
         }
         
         /// Register a requset completion handler
@@ -451,11 +475,22 @@ public extension WebRequest {
             self.webRequest?.emptyResultsData()
             self.webRequest = nil
             
+            // clear out any old delegate result data
+            self.delegate.results?.emptyLocallyLoadedData()
+            // clear out any old delegate results
+            self.delegate.results = nil
+            
             self.webRequest = DataRequest(self.currentRequest,
                                           usingSession: self.session,
                                           eventDelegate: self.delegate) {  [weak self] requestResults in
                 
                 guard let currentSelf = self else { return }
+                defer {
+                    // clear out any old delegate result data
+                    currentSelf.delegate.results?.emptyLocallyLoadedData()
+                    // clear out any old delegate results
+                    currentSelf.delegate.results = nil
+                }
                 
                 // Empty out links/data for current data request
                 if let observer = currentSelf.notificationCenterObserver {
@@ -464,8 +499,8 @@ public extension WebRequest {
                     currentSelf.notificationCenterObserver = nil
                 }
                 // Empty old request data
-                currentSelf.webRequest?.emptyResultsData()
-                currentSelf.webRequest = nil
+                //currentSelf.webRequest?.emptyResultsData()
+                //currentSelf.webRequest = nil
                 
                 // Get response error if any
                 var err: Swift.Error? = requestResults.error

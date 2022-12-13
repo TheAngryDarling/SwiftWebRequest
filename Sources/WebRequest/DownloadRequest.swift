@@ -303,26 +303,42 @@ public extension WebRequest {
                     name: String? = nil,
                     usingSession session: @autoclosure () -> URLSession,
                     completionHandler: ((Results) -> Void)? = nil) {
+            
+            let currentSession = session()
             #if swift(>=5.3) || _runtime(_ObjC)
-            let delegate = URLSessionDownloadTaskEventHandler()
+            let eventDelegate = URLSessionDownloadTaskEventHandler()
             #else
-            let delegate = URLSessionDataTaskEventHandler()
+            let eventDelegate = URLSessionDataTaskEventHandler()
             #endif
             
-            let session = URLSession(copy: session(),
-                                     delegate: delegate)
+            var workingSession: URLSession
+            var invalidateSession: Bool
+            let proxyDelegateId: String?
+            if let proxyDelegate = currentSession.delegate as? WebRequestSharedSessionDelegate {
+                proxyDelegateId = proxyDelegate.pushChildDelegate(delegate: eventDelegate)
+                workingSession = currentSession
+                invalidateSession = false
+            } else {
+                proxyDelegateId = nil
+                workingSession = URLSession(copy: currentSession,
+                                            delegate: eventDelegate)
+                invalidateSession = true
+            }
+            
+            
             
             #if swift(>=5.3) || _runtime(_ObjC)
-            let task = session.downloadTask(with: request())
+            let task = workingSession.downloadTask(with: request())
             #else
-            let task = session.dataTask(with: request())
+            let task = workingSession.dataTask(with: request())
             #endif
             
             super.init(task,
                        name: name,
-                       session: session,
-                       eventDelegate: delegate,
-                       //originalRequest: req,
+                       session: workingSession,
+                       invalidateSession: invalidateSession,
+                       proxyDelegateId: proxyDelegateId,
+                       eventDelegate: eventDelegate,
                        completionHandler: completionHandler)
             
             

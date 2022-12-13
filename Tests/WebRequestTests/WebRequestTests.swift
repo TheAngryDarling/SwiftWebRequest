@@ -293,7 +293,9 @@ final class WebRequestTests: XCTestCase {
             let requestCompletionExpect = DispatchSemaphore(value: 0)
             #endif
             //print("Creating base session")
-            let session = URLSession(configuration: URLSessionConfiguration.default)
+            let session = URLSession.usingWebRequestSharedSessionDelegate()
+            defer { session.finishTasksAndInvalidate() }
+            
             
             //print("Creating request")
             let request = WebRequest.DataRequest(testURL, usingSession: session) { r in
@@ -354,7 +356,9 @@ final class WebRequestTests: XCTestCase {
             
             
             
-            let session = URLSession(configuration: URLSessionConfiguration.default)
+            let session = URLSession.usingWebRequestSharedSessionDelegate()
+            defer { session.finishTasksAndInvalidate() }
+            
             
             let request = WebRequest.DataRequest(testURL.appendingQueryItem("sleep=5"), usingSession: session) { r in
                 defer { requestCompletionExpect.fulfill() }
@@ -425,10 +429,8 @@ final class WebRequestTests: XCTestCase {
     func _testAsyncSingleRequest() async {
         self.testAsyncSingleRequestExecuted = false
         let testCount: Int = 5
-        let session = URLSession(configuration: URLSessionConfiguration.default)
-        defer {
-            session.finishTasksAndInvalidate()
-        }
+        let session = URLSession.usingWebRequestSharedSessionDelegate()
+        defer { session.finishTasksAndInvalidate() }
         
         for _ in 0..<testCount {
             
@@ -517,7 +519,9 @@ final class WebRequestTests: XCTestCase {
             exit(1)
         }
         signal(4, sigHandler)
-        let session = URLSession(configuration: URLSessionConfiguration.default)
+        let session = URLSession.usingWebRequestSharedSessionDelegate()
+        defer { session.finishTasksAndInvalidate() }
+        
         var requests: [URL] = []
         for i in 0..<5 {
             var url: URL = testURLSearch.appendingQueryItem("q=Swift")
@@ -581,7 +585,9 @@ final class WebRequestTests: XCTestCase {
     }
     
     func testMultiRequestEventOnCompleted() {
-        let session = URLSession(configuration: URLSessionConfiguration.default)
+        let session = URLSession.usingWebRequestSharedSessionDelegate()
+        defer { session.finishTasksAndInvalidate() }
+        
         var requests: [URL] = []
         for i in 0..<5 {
             var url: URL = testURLSearch.appendingQueryItem("q=Swift")
@@ -623,7 +629,9 @@ final class WebRequestTests: XCTestCase {
     }
     
     func testMultiRequestEventOnCompletedWithMaxConcurrentCount() {
-        let session = URLSession(configuration: URLSessionConfiguration.default)
+        let session = URLSession.usingWebRequestSharedSessionDelegate()
+        defer { session.finishTasksAndInvalidate() }
+        
         var requests: [URL] = []
         for i in 0..<5 {
             var url: URL = testURLSearch.appendingQueryItem("q=Swift")
@@ -689,7 +697,9 @@ final class WebRequestTests: XCTestCase {
             if repeatCount < 5 { return WebRequest.RepeatedDataRequest<Void>.RepeatResults.repeat }
             else { return WebRequest.RepeatedDataRequest<Void>.RepeatResults.results(nil) }
         }
-        let session = URLSession(configuration: URLSessionConfiguration.default)
+        let session = URLSession.usingWebRequestSharedSessionDelegate()
+        defer { session.finishTasksAndInvalidate() }
+        
         let req = testURLSearch
         let sig = DispatchSemaphore(value: 0)
         let r = WebRequest.RepeatedDataRequest<Void>(req,
@@ -730,7 +740,9 @@ final class WebRequestTests: XCTestCase {
             return WebRequest.RepeatedDataRequest<Void>.RepeatResults.repeat
             //return (repeat: rep, results: results)
         }
-        let session = URLSession.shared
+        let session = URLSession.usingWebRequestSharedSessionDelegate()
+        defer { session.finishTasksAndInvalidate() }
+     
         let req = testURLSearch
         let sig = DispatchSemaphore(value: 0)
         let r = WebRequest.RepeatedDataRequest<Void>(req,
@@ -770,7 +782,9 @@ final class WebRequestTests: XCTestCase {
             else { return WebRequest.RepeatedDataRequest<Void>.RepeatResults.results(nil) }
             //return (repeat: rep, results: results)
         }
-        let session = URLSession(configuration: URLSessionConfiguration.default)
+        let session = URLSession.usingWebRequestSharedSessionDelegate()
+        defer { session.finishTasksAndInvalidate() }
+        
         let req = testURLSearch
         let sig = DispatchSemaphore(value: 0)
         let r = WebRequest.RepeatedDataRequest<Void>(req,
@@ -824,7 +838,9 @@ final class WebRequestTests: XCTestCase {
             }
             
         }
-        let session = URLSession(configuration: URLSessionConfiguration.default)
+        let session = URLSession.usingWebRequestSharedSessionDelegate()
+        defer { session.finishTasksAndInvalidate() }
+        
         let req = testURLSearch
         let sig = DispatchSemaphore(value: 0)
         let r = WebRequest.RepeatedDataRequest<Void>(req,
@@ -883,7 +899,9 @@ final class WebRequestTests: XCTestCase {
             
         }
         
-        let session = URLSession(configuration: URLSessionConfiguration.default)
+        let session = URLSession.usingWebRequestSharedSessionDelegate()
+        defer { session.finishTasksAndInvalidate() }
+        
         let req = testURLSearch
         let sig = DispatchSemaphore(value: 0)
         let r = WebRequest.RepeatedDataRequest<Void>(req,
@@ -908,10 +926,9 @@ final class WebRequestTests: XCTestCase {
     func _testAsyncRepeatRequest() async {
         self.testAsyncRepeatRequestExecuted = false
         
-        let session = URLSession(configuration: URLSessionConfiguration.default)
-        defer {
-            session.finishTasksAndInvalidate()
-        }
+        let session = URLSession.usingWebRequestSharedSessionDelegate()
+        defer { session.finishTasksAndInvalidate() }
+        
         let req = testURLSearch
         
         func repeatHandler(_ request: WebRequest.RepeatedDataRequest<String>,
@@ -980,7 +997,9 @@ final class WebRequestTests: XCTestCase {
             .appendingPathComponent(fileName)
         
         let sig = DispatchSemaphore(value: 0)
-        let session = URLSession(configuration: URLSessionConfiguration.default)
+        let session = URLSession.usingWebRequestSharedSessionDelegate()
+        defer { session.finishTasksAndInvalidate() }
+        
         #if !DOCKER_ALL_BUILD
         print("Trying to download '\(downloadFileURL.absoluteString)'")
         #endif
@@ -1019,7 +1038,9 @@ final class WebRequestTests: XCTestCase {
             .appendingPathComponent("/upload")
         
         let sig = DispatchSemaphore(value: 0)
-        let session = URLSession(configuration: URLSessionConfiguration.default)
+        let session = URLSession.usingWebRequestSharedSessionDelegate()
+        defer { session.finishTasksAndInvalidate() }
+        
         let request = WebRequest.UploadRequest(uploadURL,
                                                fromFile: fileURL,
                                                usingSession: session) { r in
@@ -1054,9 +1075,8 @@ final class WebRequestTests: XCTestCase {
         
         let eventsURL = testURLBase.appendingPathComponent("/events").appendingQueryItem("sleep=0.1")
         
-        let session = URLSession(configuration: URLSessionConfiguration.default)
-        
-        
+        let session = URLSession.usingWebRequestSharedSessionDelegate()
+        defer { session.finishTasksAndInvalidate() }
         
         let eventRequest = URLRequest(url: eventsURL,
                                       cachePolicy: .reloadIgnoringLocalAndRemoteCacheData,

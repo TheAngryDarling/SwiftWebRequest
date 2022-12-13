@@ -16,7 +16,11 @@ import Foundation
 public extension WebRequest {
     /// Allows for a single data web request
     class DataRequest: DataBaseRequest {
+        
         /// Create a new WebRequest using the provided url and session.
+        ///
+        /// This init is intended for the RepeatDataRequest to use a single
+        /// event delegate for each request
         ///
         /// - Parameters:
         ///   - request: The request to execute
@@ -31,7 +35,9 @@ public extension WebRequest {
                       completionHandler: ((Results) -> Void)? = nil) {
             super.init(session.dataTask(with: request()),
                        name: name,
-                       session: nil,
+                       session: session,
+                       invalidateSession: false,
+                       proxyDelegateId: nil,
                        eventDelegate: eventDelegate,
                        completionHandler: completionHandler)
         }
@@ -48,19 +54,31 @@ public extension WebRequest {
                     usingSession session: @autoclosure () -> URLSession,
                     completionHandler: ((Results) -> Void)? = nil) {
             
-            //print("Creating DataRequest")
+            let eventDelegate: URLSessionDataTaskEventHandler = URLSessionDataTaskEventHandler()
+            var workingSession: URLSession = session()
+            var invalidateSession: Bool = false
+            var proxyDelegateId: String? = nil
             
-            let eventDelegate = URLSessionDataTaskEventHandler()
             
+            if let proxyDelegate = workingSession.delegate as? WebRequestSharedSessionDelegate {
+                proxyDelegateId = proxyDelegate.pushChildDelegate(delegate: eventDelegate)
+                invalidateSession = false
+            } else {
+                proxyDelegateId = nil
+                
+                workingSession = URLSession(copy: workingSession,
+                                            delegate: eventDelegate)
+                invalidateSession = true
+            }
             
-            let session = URLSession(copy: session(),
-                                     delegate: eventDelegate)
-            
-            super.init(session.dataTask(with: request()),
+            super.init(workingSession.dataTask(with: request()),
                        name: name,
-                       session: session,
+                       session: workingSession,
+                       invalidateSession: invalidateSession,
+                       proxyDelegateId: proxyDelegateId,
                        eventDelegate: eventDelegate,
                        completionHandler: completionHandler)
+            
             
         }
         
