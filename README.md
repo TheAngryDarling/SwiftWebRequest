@@ -216,7 +216,7 @@ request.waitUntilComplete() //Lets wait until all requests have completed.  No g
 ```
 
 ## Dependencies
-* [Swifter](https://github.com/httpswift/swifter) - Used in the **Test Cases** as a local server to test request cases and generate testable responses
+* [LittleWebServer](https://github.com/TheAngryDarling/SwiftLittleWebServer.git) - Used in the **Test Cases** as a local server to test request cases and generate testable responses
 
 ## Author
 
