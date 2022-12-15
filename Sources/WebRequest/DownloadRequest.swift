@@ -182,7 +182,7 @@ public extension WebRequest {
             }
         }
         
-        private class URLSessionDataTaskEventHandler: URLSessionDownloadTaskEventHandler,
+        private class URLSessionDataDownloadTaskEventHandler: URLSessionDownloadTaskEventHandler,
                                                       URLSessionDataDelegate {
             
             
@@ -193,22 +193,6 @@ public extension WebRequest {
                 .appendingPathExtension("tmp")
             
             var totalBytesWritten: Int64 = 0
-            
-            override func urlSession(_ session: URLSession,
-                                     didBecomeInvalidWithError error: Error?) {
-                super.urlSession(session, didBecomeInvalidWithError: error)
-                
-                //print("Removing download file didBecomeInvalidWithError")
-                try? FileManager.default.removeItem(at: self.uniqueTempFileURL)
-            }
-            
-            override func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
-                super.urlSessionDidFinishEvents(forBackgroundURLSession: session)
-                
-                //print("Removing download file forBackgroundURLSession")
-                try? FileManager.default.removeItem(at: self.uniqueTempFileURL)
-            }
-            
             
             override func urlSession(_ session: URLSession,
                                      task: URLSessionTask,
@@ -227,9 +211,6 @@ public extension WebRequest {
                 super.urlSession(session,
                                  task: task,
                                  didCompleteWithError: error)
-                
-                //print("Removing download file didCompleteWithError")
-                try? FileManager.default.removeItem(at: self.uniqueTempFileURL)
 
             }
             
@@ -308,7 +289,7 @@ public extension WebRequest {
             #if swift(>=5.3) || _runtime(_ObjC)
             let eventDelegate = URLSessionDownloadTaskEventHandler()
             #else
-            let eventDelegate = URLSessionDataTaskEventHandler()
+            let eventDelegate = URLSessionDataDownloadTaskEventHandler()
             #endif
             
             var workingSession: URLSession
