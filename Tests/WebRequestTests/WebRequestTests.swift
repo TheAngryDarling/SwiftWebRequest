@@ -1045,7 +1045,8 @@ final class WebRequestTests: XCTestCase {
                                                fromFile: fileURL,
                                                usingSession: session) { r in
             XCTAssertNil(r.error, "Expected no Error but found '\(r.error as Any)'")
-            
+            XCTAssertNotNil(r.results, "Expected Data response to not be nil")
+            XCTAssertEqual(r.results?.count, 0, "Expected Data response to be empty")
             
             
             let originalData = try! Data(contentsOf: fileURL)

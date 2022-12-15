@@ -82,6 +82,23 @@ public extension WebRequest {
                 }
             }
             
+            override func urlSession(_ session: URLSession,
+                                     task: URLSessionTask,
+                                     didCompleteWithError error: Error?) {
+                // Only accept events for the given request
+                guard self.isWorkingTask(task) else { return }
+                
+                if error == nil && self.results == nil {
+                    // If the data request is complete but no data
+                    // was returned from the body of the request
+                    // then lets set the results as an empty Data structure
+                    self.results = Data()
+                }
+                super.urlSession(session,
+                                 task: task,
+                                 didCompleteWithError: error)
+            }
+            
             override func removeHandlers(withId uid: String) {
                 self.didReceiveDataHandler.removeValue(forKey: uid)
                 super.removeHandlers(withId: uid)
