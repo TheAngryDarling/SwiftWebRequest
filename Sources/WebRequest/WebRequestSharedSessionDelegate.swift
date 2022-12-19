@@ -16,10 +16,19 @@ import Foundation
 /// This delegate is designed to allow WebRequests share the same URLSession
 /// and not have to copy it
 public class WebRequestSharedSessionDelegate: NSObject {
-    private var childDelegates: [(id: String, delegate: URLSessionDelegate)] = []
+    private let childDelegateLock = NSLock()
+    private var _childDelegates: [(id: String, delegate: URLSessionDelegate)] = []
     
+    private var childDelegates: [(id: String, delegate: URLSessionDelegate)] {
+        self.childDelegateLock.lock()
+        defer { self.childDelegateLock.unlock() }
+        return self._childDelegates
+    }
     deinit {
-        self.childDelegates.removeAll()
+        self.childDelegateLock.lock()
+        defer { self.childDelegateLock.unlock() }
+        
+        self._childDelegates.removeAll()
     }
     
     /// Add a URL Session Delegate to the end proxy list
@@ -30,9 +39,12 @@ public class WebRequestSharedSessionDelegate: NSObject {
     @discardableResult
     public func appendChildDelegate(withId uid: String,
                                     delegate: URLSessionDelegate) -> String {
-        precondition(!self.childDelegates.contains(where: { return $0.id == uid }),
+        self.childDelegateLock.lock()
+        defer { self.childDelegateLock.unlock() }
+        
+        precondition(!self._childDelegates.contains(where: { return $0.id == uid }),
                      "Id already in use")
-        self.childDelegates.append((id: uid, delegate: delegate))
+        self._childDelegates.append((id: uid, delegate: delegate))
         return uid
     }
     
@@ -53,9 +65,12 @@ public class WebRequestSharedSessionDelegate: NSObject {
     @discardableResult
     public func pushChildDelegate(withId uid: String,
                                   delegate: URLSessionDelegate) -> String {
-        precondition(!self.childDelegates.contains(where: { return $0.id == uid }),
+        self.childDelegateLock.lock()
+        defer { self.childDelegateLock.unlock() }
+        
+        precondition(!self._childDelegates.contains(where: { return $0.id == uid }),
                      "Id already in use")
-        self.childDelegates.insert((id: uid, delegate: delegate), at: 0)
+        self._childDelegates.insert((id: uid, delegate: delegate), at: 0)
         return uid
     }
     
@@ -71,7 +86,10 @@ public class WebRequestSharedSessionDelegate: NSObject {
     /// Remove a URL Session delegate from the proxy list
     /// - Parameter uid: The unique id associated with the delegate to remove
     public func removeChildDelegate(withId uid: String) {
-        self.childDelegates.removeAll(where: { return $0.id == uid })
+        self.childDelegateLock.lock()
+        defer { self.childDelegateLock.unlock() }
+        
+        self._childDelegates.removeAll(where: { return $0.id == uid })
     }
 }
 
