@@ -14,8 +14,8 @@ import Foundation
 #endif
 
 #if swift(>=5.5)
+@available(macOS 10.15.0, iOS 13.0, tvOS 13.0, watchOS 6.0, *)
 public extension WebRequest.TaskedWebRequest {
-    @available(macOS 10.15.0, *)
     func safeExecute() async -> Results {
         
         self.resume()
@@ -24,7 +24,6 @@ public extension WebRequest.TaskedWebRequest {
         return self.results
     }
     
-    @available(macOS 10.15.0, *)
     func execute() async throws -> (Results.ResultsType?, URLRequest, URLResponse) {
         
         self.resume()

@@ -14,8 +14,8 @@ import Foundation
 #endif
 
 #if swift(>=5.5)
+@available(macOS 10.15.0, iOS 13.0, tvOS 13.0, watchOS 6.0, *)
 public extension WebRequest.RepeatedDataRequest {
-    @available(macOS 10.15.0, *)
     func safeExecute() async -> Results {
         self.resume()
         self.waitUntilComplete()
@@ -23,7 +23,6 @@ public extension WebRequest.RepeatedDataRequest {
         return self.results
     }
     
-    @available(macOS 10.15.0, *)
     func execute() async throws -> (T?, URLRequest, URLResponse) {
         self.resume()
         self.waitUntilComplete()

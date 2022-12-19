@@ -9,7 +9,7 @@ import LittleWebServer
 #endif
 
 
-#if swift(>=5.5)
+#if swift(>=5.5) && !_runtime(_ObjC)
 extension XCTestCase {
     func runAsyncTest(
         named testName: String = #function,
@@ -426,6 +426,7 @@ final class WebRequestTests: XCTestCase {
     
 #if swift(>=5.5)
     var testAsyncSingleRequestExecuted: Bool = false
+    @available(macOS 10.15.0, iOS 13.0, tvOS 13.0, watchOS 6.0, *)
     func _testAsyncSingleRequest() async {
         self.testAsyncSingleRequestExecuted = false
         let testCount: Int = 5
@@ -493,6 +494,7 @@ final class WebRequestTests: XCTestCase {
         }
     }
     #if _runtime(_ObjC)
+    @available(macOS 10.15.0, iOS 13.0, tvOS 13.0, watchOS 6.0, *)
     func testAsyncSingleRequest() async {
         self.testAsyncSingleRequestExecuted = false
         await self._testAsyncSingleRequest()
@@ -923,6 +925,7 @@ final class WebRequestTests: XCTestCase {
     
 #if swift(>=5.5)
     var testAsyncRepeatRequestExecuted: Bool = false
+    @available(macOS 10.15.0, iOS 13.0, tvOS 13.0, watchOS 6.0, *)
     func _testAsyncRepeatRequest() async {
         self.testAsyncRepeatRequestExecuted = false
         
@@ -968,6 +971,7 @@ final class WebRequestTests: XCTestCase {
         
     }
     #if _runtime(_ObjC)
+    @available(macOS 10.15.0, iOS 13.0, tvOS 13.0, watchOS 6.0, *)
     func testAsyncRepeatRequest() async {
         self.testAsyncRepeatRequestExecuted = false
         await self._testAsyncRepeatRequest()

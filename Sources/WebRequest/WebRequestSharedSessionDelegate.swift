@@ -1,6 +1,6 @@
 //
 //  WebRequestSharedSessionDelegate.swift
-//  
+//
 //
 //  Created by Tyler Anger on 2022-11-14.
 //
@@ -148,7 +148,7 @@ extension WebRequestSharedSessionDelegate: URLSessionDelegate {
     
     
     #if _runtime(_ObjC) && swift(>=5.3)
-    @available(macOS 11.0, *)
+    @available(macOS 11.0, iOS 7.0, tvOS 9.0, watchOS 2.0, *)
     public func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
         for (_, delegate) in self.childDelegates {
             //#if _runtime(_ObjC)
@@ -165,8 +165,7 @@ extension WebRequestSharedSessionDelegate: URLSessionDelegate {
 extension WebRequestSharedSessionDelegate: URLSessionTaskDelegate {
     
     #if swift(>=4.1)
-    //@available(macOS 10.13, macCatalyst 10.13, iOS 11.0, tvOS 11.0, watchOS 4.0, *)
-    @available(macOS 10.13, *)
+    @available(macOS 10.13, iOS 11.0, tvOS 11.0, watchOS 4.0, *)
     public func urlSession(_ session: URLSession,
                              task: URLSessionTask,
                              willBeginDelayedRequest request: URLRequest,
@@ -214,8 +213,7 @@ extension WebRequestSharedSessionDelegate: URLSessionTaskDelegate {
     #endif
 
     #if _runtime(_ObjC)
-    //@available(macOS 10.13, macCatalyst 10.13, iOS 11.0, tvOS 11.0, watchOS 4.0, *)
-    @available(macOS 10.13, *)
+    @available(macOS 10.13, iOS 11.0, tvOS 11.0, watchOS 4.0, *)
     public func urlSession(_ session: URLSession,
                         taskIsWaitingForConnectivity task: URLSessionTask) {
         for (_, delegate) in self.childDelegates {
@@ -389,8 +387,7 @@ extension WebRequestSharedSessionDelegate: URLSessionTaskDelegate {
     }
 
     #if _runtime(_ObjC)
-    //@available(macOS 10.12, macCatalyst 13.0, iOS 10.0, tvOS 10.0, watchOS 3.0, *)
-    @available(macOS 10.12, *)
+    @available(macOS 10.12, iOS 10.0, tvOS 10.0, watchOS 3.0, *)
     public func urlSession(_ session: URLSession,
                            task: URLSessionTask,
                            didFinishCollecting metrics: URLSessionTaskMetrics) {
@@ -497,8 +494,7 @@ extension WebRequestSharedSessionDelegate: URLSessionDataDelegate {
     }
 
     #if _runtime(_ObjC)
-    //@available(macOS 10.11, macCatalyst 13.0, iOS 9.0, tvOS 9.0, watchOS 2.0, *)
-    @available(macOS 10.11, *)
+    @available(macOS 10.11, iOS 9.0, tvOS 9.0, watchOS 2.0, *)
     public func urlSession(_ session: URLSession,
                            dataTask: URLSessionDataTask,
                            didBecome streamTask: URLSessionStreamTask) {
@@ -723,7 +719,7 @@ extension WebRequestSharedSessionDelegate: URLSessionStreamDelegate {
 
 // MARK: - URLSessionWebSocketDelegate
 #if _runtime(_ObjC) && swift(>=5.4)
-@available(macOS 10.15, macCatalyst 13.0, iOS 13.0, tvOS 13.0, watchOS 6.0, *)
+@available(macOS 10.15, iOS 13.0, tvOS 13.0, watchOS 6.0, *)
 extension WebRequestSharedSessionDelegate: URLSessionWebSocketDelegate {
     public func urlSession(_ session: URLSession,
                            webSocketTask: URLSessionWebSocketTask,
