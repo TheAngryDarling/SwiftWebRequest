@@ -76,6 +76,13 @@ open class WebRequest: NSObject {
         
     }
     
+    /// Callback handler for simple events that only send the web request object
+    public typealias SimpleEventCallback = (WebRequest) -> Void
+    /// State Change callback handler that send the web request and the new state
+    public typealias StateChangeEventCallback = (WebRequest, WebRequest.State) -> Void
+    /// State Change Event handler that signals when the state of a web request changes
+    public typealias StateChangeHandler = (WebRequest,WebRequest.State, WebRequest.ChangeState) -> Void
+    
     /// Synchronized resource around indicator if the web request has started yet
     private let _hasStarted: ResourceLock<Bool> = .init(resource: false)
     /// Indicator if the web request has started yet
@@ -108,22 +115,23 @@ open class WebRequest: NSObject {
     private let eventHandlerQueue: DispatchQueue = DispatchQueue(label: "org.webrequest.WebRequest.EventHandler.Queue")
     
     /// Event handler that gets triggered when the request first starts
-    public var requestStarted: ((WebRequest) -> Void)? = nil
+    public var requestStarted: (SimpleEventCallback)? = nil
     /// Event handler that gets triggered when the request get resumed
-    public var requestResumed: ((WebRequest) -> Void)? = nil
+    public var requestResumed: (SimpleEventCallback)? = nil
     /// Event handler that gets triggered when the request get suspended
-    public var requestSuspended: ((WebRequest) -> Void)? = nil
+    public var requestSuspended: (SimpleEventCallback)? = nil
     /// Event handler that gets triggered when the request get cancelled
-    public var requestCancelled: ((WebRequest) -> Void)? = nil
+    public var requestCancelled: (SimpleEventCallback)? = nil
     /// Event handler that gets triggered when the request is completed
-    public var requestCompleted: ((WebRequest) -> Void)? = nil
+    public var requestCompleted: (SimpleEventCallback)? = nil
     
     /// Event handler that gets triggered when the requests state changes
-    public var requestStateChanged: ((WebRequest, WebRequest.State) -> Void)? = nil
+    public var requestStateChanged: (StateChangeEventCallback)? = nil
     
-    private var requestStateChangedHandlers: ResourceLock<[String: (WebRequest,
-                                                       WebRequest.State,
-                                                                    WebRequest.ChangeState) -> Void]> = .init(resource: [:])
+    private var requestStateChangedHandlers: ResourceLock<[String: StateChangeHandler]> = .init(resource: [:])
+    
+    /// Synchronized array of callbacks to execute when web request is about to deinit
+    private var deinitHandlers: ResourceLock<[String: SimpleEventCallback]> = .init(resource: [:])
     
     /// An object for users to store any additional information regarding the request
     private var _userInfo: ResourceLock<[String: Any]> = .init(resource: [:])
@@ -175,6 +183,14 @@ open class WebRequest: NSObject {
         self.name = name
     }
     deinit {
+        self.deinitHandlers.withUpdatingLock { handlers in
+            // execute all deinit handlers prior to any other cleanup
+            // so all object value are still available
+            for handler in handlers.values {
+                handler(self)
+            }
+            handlers = [:]
+        }
         // if we loose reference we cancel the requset?
         if self._isRunning.value {
             self.cancel()
@@ -383,9 +399,7 @@ open class WebRequest: NSObject {
     ///   - handlerID: The unique ID to use when registering the handler.  This ID can be used to remove the handler later.  If the ID was not unique a precondition error will occure
     ///   - handler: The state change handler to be called
     public func registerStateChangedHandler(handlerID: String,
-                                            handler: @escaping (_ request: WebRequest,
-                                                                _ from: WebRequest.State,
-                                                                _ to: WebRequest.ChangeState) -> Void) {
+                                            handler: @escaping StateChangeHandler) {
         
         self.requestStateChangedHandlers.withUpdatingLock { dict in
             guard !dict.keys.contains(handlerID) else {
@@ -399,9 +413,7 @@ open class WebRequest: NSObject {
     /// - Parameter handler: The state change handler to be called
     /// - Returns: Returns the unique ID for the handler tha  can be used to remove the handle later
     @discardableResult
-    public func registerStateChangedHandler(handler: @escaping (_ request: WebRequest,
-                                                                _ from: WebRequest.State,
-                                                                _ to: WebRequest.ChangeState) -> Void) -> String {
+    public func registerStateChangedHandler(handler: @escaping StateChangeHandler) -> String {
         let uid = UUID().uuidString
         self.registerStateChangedHandler(handlerID: uid, handler: handler)
         return uid
@@ -413,6 +425,41 @@ open class WebRequest: NSObject {
     @discardableResult
     public func unregisterStateChangedHandler(for id: String) -> Bool {
         return self.requestStateChangedHandlers.withUpdatingLock { dict in
+            return dict.removeValue(forKey: id) != nil
+        }
+    }
+    
+    /// Register a deinit handler
+    /// - Parameters:
+    ///   - handlerID: The unique ID to use when registering the handler.  This ID can be used to remove the handler later.  If the ID was not unique a precondition error will occure
+    ///   - handler: The deinit handler to be called
+    public func registerDeinitHandler(handlerID: String,
+                                      handler: @escaping SimpleEventCallback) {
+        
+        self.deinitHandlers.withUpdatingLock { dict in
+            guard !dict.keys.contains(handlerID) else {
+                preconditionFailure("Handler ID Already exists")
+            }
+            dict[handlerID] = handler
+        }
+    }
+    
+    /// Register a state changed handler
+    /// - Parameter handler: The state change handler to be called
+    /// - Returns: Returns the unique ID for the handler tha  can be used to remove the handle later
+    @discardableResult
+    public func registerDeinitHandler(handler: @escaping SimpleEventCallback) -> String {
+        let uid = UUID().uuidString
+        self.registerDeinitHandler(handlerID: uid, handler: handler)
+        return uid
+    }
+    
+    /// Removes a handler
+    /// - Parameter id: The unique ID of the handler to remove
+    /// - Returns: Returns an indicator if a handler was removed
+    @discardableResult
+    public func unregisterDeinitHandler(for id: String) -> Bool {
+        return self.deinitHandlers.withUpdatingLock { dict in
             return dict.removeValue(forKey: id) != nil
         }
     }
