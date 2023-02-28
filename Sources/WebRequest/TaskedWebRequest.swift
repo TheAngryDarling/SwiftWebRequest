@@ -328,6 +328,9 @@ public extension WebRequest {
             else { return originalURL }
         }
         
+        /// Response's HTTP Status Code
+        public var httpStatusCode: Int? { return (self.response as? HTTPURLResponse)?.statusCode }
+        
         internal var hasResponse: Bool {
             return (self.response != nil || self.error != nil || self.results != nil)
         }
