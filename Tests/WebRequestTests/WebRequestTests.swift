@@ -1118,6 +1118,24 @@ final class WebRequestTests: XCTestCase {
         XCTAssert(didReceiveEvent, "No events were received")
     }
     
+    func testDeinitHandler() {
+        let testURL = testURLSearch.appendingQueryItem("q=Swift")
+        let session = URLSession.usingWebRequestSharedSessionDelegate()
+        var request: WebRequest.DataRequest?  = WebRequest.DataRequest(testURL,
+                                                                       usingSession: session)
+        let semaphore = DispatchSemaphore(value: 0)
+        request?.registerDeinitHandler { _ in
+            session.finishTasksAndInvalidate()
+            semaphore.signal()
+        }
+        
+        request = nil
+        if semaphore.wait(timeout: .now() + 5.0) != .success {
+            XCTFail("Failed to signal requst dinit in allocated time")
+        }
+        
+    }
+    
     #if _runtime(_ObjC)
     func testEncodingNames() {
         let encodingString: [String] = ["1",
@@ -1980,7 +1998,8 @@ final class WebRequestTests: XCTestCase {
             
             ("testDownloadFile", testDownloadFile),
             ("testUploadFile", testUploadFile),
-            ("testStreamedEvents", testStreamedEvents)
+            ("testStreamedEvents", testStreamedEvents),
+            ("testDeinitHandler", testDeinitHandler)
         ])
         
         return rtn
