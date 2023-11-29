@@ -287,10 +287,12 @@ final class WebRequestTests: XCTestCase {
             let requestStartedExpect = self.expectation(description: "requestStarted")
             let requestCompletedExpect = self.expectation(description: "requestCompleted")
             let requestCompletionExpect = self.expectation(description: "requestCompletion")
+            let requestSimpleCompleteExpect = self.expectation(description: "requestSimpleCompletion")
             #else
             let requestStartedExpect = DispatchSemaphore(value: 0)
             let requestCompletedExpect = DispatchSemaphore(value: 0)
             let requestCompletionExpect = DispatchSemaphore(value: 0)
+            let requestSimpleCompleteExpect = DispatchSemaphore(value: 0)
             #endif
             //print("Creating base session")
             let session = URLSession.usingWebRequestSharedSessionDelegate()
@@ -314,6 +316,9 @@ final class WebRequestTests: XCTestCase {
             request.requestCompleted = { _ in
                 requestCompletedExpect.fulfill()
             }
+            request.registerSimpleCompletionHandler { _ in
+                requestSimpleCompleteExpect.fulfill()
+            }
             var changedStates: [WebRequest.ChangeState] = []
             request.registerStateChangedHandler { request, from, to in
                 changedStates.append(to)
@@ -324,7 +329,8 @@ final class WebRequestTests: XCTestCase {
             #if _runtime(_ObjC) || swift(>=5.0)
             self.wait(for: [requestStartedExpect,
                             requestCompletedExpect,
-                            requestCompletionExpect],
+                            requestCompletionExpect,
+                            requestSimpleCompleteExpect],
                          timeout: 10)
             #else
             if requestStartedExpect.wait(timeout: .now() + 10) == .timedOut {
@@ -336,6 +342,10 @@ final class WebRequestTests: XCTestCase {
             if requestCompletionExpect.wait(timeout: .now() + 10) == .timedOut {
                 XCTFail("Failed expectation request completion")
             }
+            if requestSimpleCompleteExpect.wait(timeout: .now() + 10) == .timedOut {
+                XCTFail("Failed expectation request simple completion")
+            }
+            
             #endif
             
             
@@ -348,10 +358,12 @@ final class WebRequestTests: XCTestCase {
             let requestStartedExpect = self.expectation(description: "requestStarted")
             let requestCancelledExpect = self.expectation(description: "requestCancelled")
             let requestCompletionExpect = self.expectation(description: "requestCompletion")
+            let requestSimpleCompleteExpect = self.expectation(description: "requestSimpleCompletion")
             #else
             let requestStartedExpect = DispatchSemaphore(value: 0)
             let requestCancelledExpect = DispatchSemaphore(value: 0)
             let requestCompletionExpect = DispatchSemaphore(value: 0)
+            let requestSimpleCompleteExpect = DispatchSemaphore(value: 0)
             #endif
             
             
@@ -392,6 +404,9 @@ final class WebRequestTests: XCTestCase {
             request.requestCancelled = { _ in
                 requestCancelledExpect.fulfill()
             }
+            request.registerSimpleCompletionHandler { _ in
+                requestSimpleCompleteExpect.fulfill()
+            }
             var changedStates: [WebRequest.ChangeState] = []
             request.registerStateChangedHandler { request, from, to in
                 changedStates.append(to)
@@ -404,7 +419,8 @@ final class WebRequestTests: XCTestCase {
             #if _runtime(_ObjC) || swift(>=5.0)
             self.wait(for: [requestStartedExpect,
                             requestCancelledExpect,
-                            requestCompletionExpect],
+                            requestCompletionExpect,
+                            requestSimpleCompleteExpect],
                          timeout: 10)
             #else
             if requestStartedExpect.wait(timeout: .now() + 10) == .timedOut {
@@ -415,6 +431,9 @@ final class WebRequestTests: XCTestCase {
             }
             if requestCompletionExpect.wait(timeout: .now() + 10) == .timedOut {
                 XCTFail("Failed expectation request completion")
+            }
+            if requestSimpleCompleteExpect.wait(timeout: .now() + 10) == .timedOut {
+                XCTFail("Failed expectation request simple completion")
             }
             #endif
             

@@ -147,6 +147,8 @@ open class WebRequest: NSObject {
     /// Synchronized array of callbacks to execute when web request has completed
     private var waitCompletionCallbacks: ResourceLock<[() -> Void]> = .init(resource: [])
     
+    private var simpleCompletionHandlers: ResourceLock<[String:SimpleEventCallback]> = .init(resource: [:])
+    
     /// A unique UUID for this request object
     public let uid: String
     /// Custom Name identifing this request
@@ -341,6 +343,12 @@ open class WebRequest: NSObject {
                               toState: toStateChange)
         if triggerDoneGroup {
             
+            self.simpleCompletionHandlers.withUpdatingLock { r in
+                for handler in r.values {
+                    handler(self)
+                }
+                r = [:]
+            }
             self.waitCompletionCallbacks.withUpdatingLock { r in
                 // trigger wait events
                 for waitEvent in r {
@@ -461,6 +469,41 @@ open class WebRequest: NSObject {
     public func unregisterDeinitHandler(for id: String) -> Bool {
         return self.deinitHandlers.withUpdatingLock { dict in
             return dict.removeValue(forKey: id) != nil
+        }
+    }
+    
+    /// Register a requset simple completion handler
+    /// - Parameters:
+    ///   - handlerID: The unique ID to use when registering the handler.  This ID can be used to remove the handler later.  If the ID was not unique a precondition error will occure
+    ///   - handler: The completion handler to be called
+    public func registerSimpleCompletionHandler(handlerID: String,
+                                                handler: @escaping SimpleEventCallback) {
+        
+        self.simpleCompletionHandlers.withUpdatingLock { r in
+            guard !(r.keys.contains(handlerID)) else {
+                preconditionFailure("Handler ID Already exists")
+            }
+            r[handlerID] = handler
+        }
+    }
+    
+    /// Register a requset simple completion handler
+    /// - Parameter handler: The completion handler to be called
+    /// - Returns: Returns the unique ID for the handler tha  can be used to remove the handle later
+    @discardableResult
+    public func registerSimpleCompletionHandler(handler: @escaping SimpleEventCallback) -> String {
+        let uid = UUID().uuidString
+        self.registerSimpleCompletionHandler(handlerID: uid, handler: handler)
+        return uid
+    }
+    
+    /// Removes a handler
+    /// - Parameter id: The unique ID of the handler to remove
+    /// - Returns: Returns an indicator if a handler was removed
+    @discardableResult
+    public func unregisterSimpleCompletionHandler(for id: String) -> Bool {
+        return self.simpleCompletionHandlers.withUpdatingLock { r in
+            return r.removeValue(forKey: id) != nil
         }
     }
     
