@@ -127,7 +127,7 @@ open class WebRequest: NSObject {
     
     /// Event handler that gets triggered when the requests state changes
     public var requestStateChanged: (StateChangeEventCallback)? = nil
-    
+    /// Synchronized dictionary of callbacks to execute when web request state has changed
     private var requestStateChangedHandlers: ResourceLock<[String: StateChangeHandler]> = .init(resource: [:])
     
     /// Synchronized array of callbacks to execute when web request is about to deinit
@@ -146,7 +146,7 @@ open class WebRequest: NSObject {
     
     /// Synchronized array of callbacks to execute when web request has completed
     private var waitCompletionCallbacks: ResourceLock<[() -> Void]> = .init(resource: [])
-    
+    /// Synchronized dictionary of callbacks to execute when web request has completed
     private var simpleCompletionHandlers: ResourceLock<[String:SimpleEventCallback]> = .init(resource: [:])
     
     /// A unique UUID for this request object
