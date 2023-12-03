@@ -17,21 +17,28 @@ import Foundation
 @available(macOS 10.15.0, iOS 13.0, tvOS 13.0, watchOS 6.0, *)
 public extension WebRequest.RepeatedDataRequest {
     func safeExecute() async -> Results {
-        self.resume()
-        self.waitUntilComplete()
-        
-        return self.results
+        return await withCheckedContinuation({
+            (continuation: CheckedContinuation<Results, Never>) in
+            self.resume()
+            self.waitUntilComplete()
+            
+            continuation.resume(returning: self.results)
+        })
     }
     
     func execute() async throws -> (T?, URLRequest, URLResponse) {
-        self.resume()
-        self.waitUntilComplete()
-        let r = self.results
-        if let e = r.error {
-            throw e
-        } else {
-            return (r.object, r.request, r.response!)
-        }
+        return try await withCheckedThrowingContinuation({
+            (continuation: CheckedContinuation<(T?, URLRequest, URLResponse), Error>) in
+            self.resume()
+            self.waitUntilComplete()
+            
+            let r = self.results
+            if let e = r.error {
+                continuation.resume(throwing: e)
+            } else {
+                continuation.resume(returning: (r.object, r.request, r.response!))
+            }
+        })
     }
 }
 #endif
