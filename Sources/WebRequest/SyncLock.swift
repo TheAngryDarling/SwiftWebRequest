@@ -59,6 +59,10 @@ internal class SharedResourceLock<Resource, Lock>: NSLocking where Lock: NSLocki
     }
 }
 
+#if swift(>=5.5)
+extension SharedResourceLock: @unchecked Sendable where Resource: Sendable { }
+#endif
+
 extension SharedResourceLock: CustomStringConvertible {
     public var description: String { return "\(self._resource)" }
 }

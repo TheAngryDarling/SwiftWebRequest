@@ -414,3 +414,6 @@ public extension WebRequest {
         
     }
 }
+#if swift(>=5.7)
+extension WebRequest.DownloadRequest: @unchecked Sendable { }
+#endif

@@ -763,3 +763,6 @@ extension WebRequestSharedSessionDelegate: URLSessionWebSocketDelegate {
 }
 #endif
 
+#if swift(>=5.5)
+extension WebRequestSharedSessionDelegate: @unchecked Sendable { }
+#endif

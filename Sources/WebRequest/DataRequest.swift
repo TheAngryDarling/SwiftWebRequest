@@ -100,3 +100,6 @@ public extension WebRequest {
         }
     }
 }
+#if swift(>=5.7)
+extension WebRequest.DataRequest: @unchecked Sendable { }
+#endif

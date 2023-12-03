@@ -617,3 +617,8 @@ internal extension WebRequest {
     #endif
 }
 
+#if swift(>=5.5)
+extension WebRequest: @unchecked Sendable { }
+extension WebRequest.State: Sendable { }
+extension WebRequest.ChangeState: Sendable { }
+#endif

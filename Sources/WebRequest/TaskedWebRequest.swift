@@ -1057,3 +1057,7 @@ extension WebRequest {
     }
     
 }
+
+#if swift(>=5.7)
+extension WebRequest.TaskedWebRequest: @unchecked Sendable { }
+#endif

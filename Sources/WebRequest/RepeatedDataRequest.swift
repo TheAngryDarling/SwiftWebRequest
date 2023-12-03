@@ -663,3 +663,6 @@ public extension WebRequest {
         
     }
 }
+#if swift(>=5.7)
+extension WebRequest.RepeatedDataRequest: @unchecked Sendable { }
+#endif
