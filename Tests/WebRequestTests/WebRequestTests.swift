@@ -605,6 +605,113 @@ final class WebRequestTests: XCTestCase {
         sig.wait()
     }
     
+#if swift(>=5.5)
+    var testAsyncMultiRequestExecuted: Bool = false
+    @available(macOS 10.15.0, iOS 13.0, tvOS 13.0, watchOS 6.0, *)
+    func _testAsyncMultiRequest() async {
+        self.testAsyncMultiRequestExecuted = false
+        func sigHandler(_ signal: Int32) -> Void {
+            print("SIG: 4")
+            Thread.callStackSymbols.forEach{print($0)}
+            fflush(stdout)
+            exit(1)
+        }
+        signal(4, sigHandler)
+        let session = URLSession.usingWebRequestSharedSessionDelegate()
+        defer { session.finishTasksAndInvalidate() }
+        
+        var requests: [URL] = []
+        for i in 0..<5 {
+            var url: URL = testURLSearch.appendingQueryItem("q=Swift")
+            if i > 0 {
+                url = url.appendingQueryItem("start=\(i * 10)")
+            }
+            requests.append(url)
+        }
+        let sig = DispatchSemaphore(value: 0)
+        
+        let request = WebRequest.GroupRequest(requests,
+                                              usingSession: session,
+                                              maxConcurrentRequests: 5) { rA in
+            #if !DOCKER_ALL_BUILD
+            print("Finished async grouped request")
+            #endif
+            for (i, r) in rA.enumerated() {
+                guard let request = r as? WebRequest.DataRequest else {
+                    XCTFail("[\(i)] Expected 'WebRequest.DataRequest' but found '\(type(of: r))'")
+                    continue
+                }
+                var responseLine: String = "[\(i)] \(request.originalRequest!.url!.absoluteString): \(request.state) "
+                if let r = request.response as? HTTPURLResponse { responseLine += " - \(r.statusCode)" }
+                else if let e = request.results.error { responseLine += " - \(type(of: e)): \(e)" }
+                guard let responseString = request.results.responseString() else {
+                    XCTFail("[\(i)]: Unable to convert response into string: \(request.results.data as Any)")
+                    continue
+                }
+                var testCase: String = "Query?q=Swift"
+                if i > 0 { testCase += "&start=\(i * 10)" }
+                XCTAssertEqual(responseString, testCase, "[\(i)]: Expected response to match")
+                #if !DOCKER_ALL_BUILD
+                print(responseLine)
+                fflush(stdout)
+                #endif
+            }
+            sig.signal()
+        }
+        request.requestStarted = { r in
+            #if !DOCKER_ALL_BUILD
+            print("Starting grouped request")
+            #endif
+        }
+        request.singleRequestStarted = { gR, i, r in
+            guard let request = r as? WebRequest.DataRequest else { return }
+            #if !DOCKER_ALL_BUILD
+            print("Staring [\(i)] \(request.originalRequest!.url!.absoluteString)")
+            #endif
+        }
+        request.singleRequestCompleted = { gR, i, r in
+            guard let request = r as? WebRequest.DataRequest else { return }
+            let responseSize = request.results.data?.count ?? 0
+            let responseCode = (request.response as? HTTPURLResponse)?.statusCode ?? 0
+            #if !DOCKER_ALL_BUILD
+            print("Finished [\(i)] \(request.originalRequest!.url!.absoluteString) - \(responseCode) - \(request.state) - Size: \(responseSize)")
+            #endif
+        }
+        let subRequests = await request.execute()
+        self.testAsyncMultiRequestExecuted = true
+        for (index, req) in subRequests.enumerated() {
+            guard let dtaReq = req as? WebRequest.DataRequest else {
+                XCTFail("[\(index)]: '\(NSStringFromClass(type(of: req)))' was not a DataRequest")
+                continue
+            }
+            guard let resp = dtaReq.response as? HTTPURLResponse else {
+                XCTFail("[\(index)]: Data request does not have HTTP Response")
+                continue
+            }
+            XCTAssertEqual(resp.statusCode, 200, "[\(index)]: Unexpected status code")
+            XCTAssertTrue((dtaReq.results.data?.count ?? 0) > 0, "[\(index)]: Missing response data")
+        }
+    }
+    #if _runtime(_ObjC)
+    @available(macOS 10.15.0, iOS 13.0, tvOS 13.0, watchOS 6.0, *)
+    func testAsyncMultiRequest() async {
+        self.testAsyncMultiRequestExecuted = false
+        await self._testAsyncMultiRequest()
+        XCTAssertTrue(self.testAsyncMultiRequestExecuted,
+                      "Test '_testAsyncMultiRequest' was not executed")
+    }
+    #else
+    func testAsyncMultiRequest() {
+        self.testAsyncMultiRequestExecuted = false
+        runAsyncTest {
+            await self._testAsyncMultiRequest()
+        }
+        XCTAssertTrue(self.testAsyncMultiRequestExecuted,
+                      "Test '_testAsyncMultiRequest' was not executed")
+    }
+    #endif
+#endif
+    
     func testMultiRequestEventOnCompleted() {
         let session = URLSession.usingWebRequestSharedSessionDelegate()
         defer { session.finishTasksAndInvalidate() }
@@ -2003,6 +2110,13 @@ final class WebRequestTests: XCTestCase {
             ("testMultiRequest", testMultiRequest),
             ("testMultiRequestEventOnCompleted", testMultiRequestEventOnCompleted),
             ("testMultiRequestEventOnCompletedWithMaxConcurrentCount", testMultiRequestEventOnCompletedWithMaxConcurrentCount),
+        ])
+        
+        #if swift(>=5.5) && !_runtime(_ObjC)
+        rtn.append(("testAsyncMultiRequest", testAsyncMultiRequest))
+        #endif
+        
+        rtn.append(contentsOf: [
             ("testRepeatRequest", testRepeatRequest),
             ("testRepeatRequestCancelled", testRepeatRequestCancelled),
             ("testRepeatRequestUpdateURL", testRepeatRequestUpdateURL),
@@ -2014,7 +2128,6 @@ final class WebRequestTests: XCTestCase {
         #endif
         
         rtn.append(contentsOf: [
-            
             ("testDownloadFile", testDownloadFile),
             ("testUploadFile", testUploadFile),
             ("testStreamedEvents", testStreamedEvents),
